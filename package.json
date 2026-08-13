@@ -1,0 +1,16 @@
+{
+  "name": "pocket-data-office",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pocket Data Office — internal ops app (dashboard, CRM, tickets, projects, finance) for hosting on Railway.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

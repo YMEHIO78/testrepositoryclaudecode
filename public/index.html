@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pocket Data Office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1c1a1c;
+    --paper:#f3f1ec;
+    --panel:#ffffff;
+    --line:#e2ddd2;
+    --muted:#8a8683;
+    --brand:#1800ad;
+    --brand-soft:#e9e6fb;
+    --amber:#b9711f;
+    --amber-soft:#faf1e2;
+    --green:#1f7a4d;
+    --green-soft:#e6f4ec;
+    --red:#b23a2f;
+    --red-soft:#fbe9e6;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;font-size:14px;line-height:1.5;}
+  code,.mono,.num{font-family:'IBM Plex Mono',monospace;}
+  a{color:var(--brand);text-decoration:none;}
+  a:hover{text-decoration:underline;}
+  button{font-family:inherit;cursor:pointer;}
+
+  /* Shell */
+  .shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh;}
+  .rail{background:var(--brand);color:#f3f2fa;padding:20px 14px;display:flex;flex-direction:column;gap:18px;}
+  .brand{font-family:'IBM Plex Mono',monospace;font-weight:600;letter-spacing:.5px;font-size:13px;line-height:1.3;padding:0 6px;}
+  .brand small{display:block;color:#b9a9ff;font-weight:400;letter-spacing:2px;font-size:10px;margin-top:2px;}
+  .nav-group{display:flex;flex-direction:column;gap:2px;}
+  .nav-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#a89ae0;padding:10px 10px 4px;}
+  .nav-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;background:none;border:none;color:#e7e3fb;text-align:left;padding:8px 10px;border-radius:8px;font-size:13px;}
+  .nav-btn:hover{background:rgba(255,255,255,.08);}
+  .nav-btn.active{background:#fff;color:var(--brand);font-weight:600;}
+  .nav-badge{font-family:'IBM Plex Mono',monospace;font-size:10px;background:rgba(255,255,255,.16);padding:1px 6px;border-radius:10px;}
+  .nav-btn.active .nav-badge{background:var(--brand-soft);color:var(--brand);}
+  .rail-foot{margin-top:auto;font-size:11px;color:#b9a9ff;padding:0 10px;}
+
+  .main{display:flex;flex-direction:column;min-height:100vh;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--line);background:var(--panel);}
+  .crumb{font-size:12px;color:var(--muted);}
+  .crumb b{color:var(--ink);}
+  .connected{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;margin-right:5px;}
+  .chip{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;}
+
+  .view{padding:24px 28px 60px;max-width:1180px;}
+  .view h1{font-size:22px;margin:0 0 4px;}
+  .view .sub{color:var(--muted);font-size:13px;margin:0 0 22px;}
+
+  .grid{display:grid;gap:14px;}
+  .cols-4{grid-template-columns:repeat(4,1fr);}
+  .cols-3{grid-template-columns:repeat(3,1fr);}
+  .cols-2{grid-template-columns:1fr 1fr;}
+  @media (max-width:900px){.cols-4,.cols-3,.cols-2{grid-template-columns:1fr;}}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;}
+  .card h3{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 8px;font-weight:600;}
+  .stat{font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:600;}
+  .stat-note{font-size:12px;color:var(--muted);margin-top:2px;}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);font-weight:600;}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:#faf9f6;}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;}
+  .pill.green{background:var(--green-soft);color:var(--green);}
+  .pill.amber{background:var(--amber-soft);color:var(--amber);}
+  .pill.red{background:var(--red-soft);color:var(--red);}
+  .pill.brand{background:var(--brand-soft);color:var(--brand);}
+  .pill.grey{background:#efece5;color:var(--muted);}
+
+  .panel-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .panel-title h3{margin:0;font-size:13px;text-transform:none;letter-spacing:0;color:var(--ink);font-weight:600;}
+  .note{font-size:12.5px;color:var(--muted);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:14px 0;}
+  .note b{color:var(--ink);}
+
+  .msg{display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--line);}
+  .msg:last-child{border-bottom:none;}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
+  .msg-meta{font-size:11.5px;color:var(--muted);}
+  .msg-subject{font-weight:600;font-size:13px;margin:2px 0;}
+  .msg-snippet{font-size:12.5px;color:var(--muted);}
+
+  .btn{display:inline-flex;align-items:center;gap:6px;background:var(--brand);color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;}
+  .btn.ghost{background:none;border:1px solid var(--line);color:var(--ink);}
+  .btn.small{padding:5px 10px;font-size:11.5px;}
+
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .cal-day{background:var(--panel);min-height:88px;padding:6px;font-size:11px;}
+  .cal-day .d{color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+  .cal-ev{background:var(--brand-soft);color:var(--brand);border-radius:4px;padding:2px 5px;font-size:10.5px;margin-top:3px;}
+  .cal-head{background:var(--paper);text-align:center;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);padding:6px 0;font-weight:600;}
+
+  .spec-block{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:14px;}
+  .spec-block h3{margin:0 0 6px;font-size:15px;}
+  .spec-block .tag{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--brand);}
+  .spec-block p{margin:8px 0;font-size:13px;color:#4a4744;}
+  .spec-fields{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--paper);border-radius:6px;padding:10px 12px;line-height:1.7;color:#3b3936;}
+  .security-note{border:1px solid #d9cfa1;background:#fbf6e4;border-radius:var(--radius);padding:16px 18px;margin:18px 0;}
+  .security-note h3{margin:0 0 8px;color:#8a6a13;font-size:13px;text-transform:uppercase;letter-spacing:.5px;}
+  .security-note ul{margin:6px 0 0;padding-left:18px;font-size:13px;}
+  .security-note li{margin:4px 0;}
+
+  .integ-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);}
+  .integ-row:last-child{border-bottom:none;}
+  .integ-name{font-weight:600;font-size:13px;}
+  .integ-desc{font-size:12px;color:var(--muted);}
+
+  .hidden{display:none;}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- LEFT RAIL -->
+  <nav class="rail">
+    <div class="brand">POCKET<br>DATA OFFICE<small>WORKSPACE</small></div>
+
+    <div class="nav-group">
+      <div class="nav-label">Overview</div>
+      <button class="nav-btn active" data-view="dash">Dashboard</button>
+      <button class="nav-btn" data-view="inbox">Inbox <span class="nav-badge">3</span></button>
+      <button class="nav-btn" data-view="calendar">Calendar</button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Clients</div>
+      <button class="nav-btn" data-view="crm">CRM &amp; Leads <span class="nav-badge">14</span></button>
+      <button class="nav-btn" data-view="projects">Projects</button>
+      <button class="nav-btn" data-view="tickets">Service Desk <span class="nav-badge">5</span></button>
+      <button class="nav-btn" data-view="files">Files</button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Back office</div>
+      <button class="nav-btn" data-view="finance">Finance</button>
+      <button class="nav-btn" data-view="people">People</button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Dev</div>
+      <button class="nav-btn" data-view="spec">System spec</button>
+    </div>
+
+    <div class="rail-foot">Pocket Data Office · internal build</div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="crumb">Pocket Data Office / <b id="crumbLabel">Dashboard</b></div>
+      <div class="connected">
+        <span><span class="dot"></span>Connected</span>
+        <span class="chip">clientcare@pocketdataoffice.com</span>
+        <span class="chip">admin@pocketdataoffice.com</span>
+        <span class="chip">Outlook Calendar</span>
+        <span class="chip">Wave · accounting</span>
+      </div>
+    </div>
+
+    <!-- ================= DASHBOARD ================= -->
+    <div class="view" id="view-dash">
+      <h1>Good morning, Yosef.</h1>
+      <p class="sub">Tuesday, 11 August 2026 · Week 33, Q3 2026 — three emails are waiting on a reply, two tickets breach SLA tomorrow, and the Hatcher proposal has been open for nine days.</p>
+
+      <div class="grid cols-4">
+        <div class="card"><h3>Open tickets</h3><div class="stat">5</div><div class="stat-note">2 due within 24h</div></div>
+        <div class="card"><h3>New emails</h3><div class="stat">7</div><div class="stat-note">across both Outlook inboxes</div></div>
+        <div class="card"><h3>Unbilled</h3><div class="stat">$4,850</div><div class="stat-note">ready to push to Wave</div></div>
+        <div class="card"><h3>Retainer MRR</h3><div class="stat">$9,200</div><div class="stat-note">4 clients on monthly terms</div></div>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:14px;">
+        <div class="card">
+          <div class="panel-title"><h3>Needs your reply</h3><a href="#" data-goto="inbox">Inbox →</a></div>
+          <div class="msg"><div class="avatar">DH</div><div><div class="msg-meta">Dana Hatcher · 8:41 AM</div><div class="msg-subject">Can last week's numbers be trusted?</div><div class="msg-snippet">Nightly refresh has failed three nights running…</div></div></div>
+          <div class="msg"><div class="avatar">RD</div><div><div class="msg-meta">Ridgeline Dental · Yesterday</div><div class="msg-subject">Phase 2 scope — one open question</div><div class="msg-snippet">Happy to sign off once we settle the third workstream.</div></div></div>
+          <div class="msg"><div class="avatar">MC</div><div><div class="msg-meta">Marlowe Clinic · Mon</div><div class="msg-subject">Invoice INV-2044 — quick question</div><div class="msg-snippet">Can you confirm this covers the August retainer?</div></div></div>
+        </div>
+        <div class="card">
+          <div class="panel-title"><h3>Tickets at risk</h3><a href="#" data-goto="tickets">Desk →</a></div>
+          <table><tbody>
+            <tr><td class="num">TKT-118</td><td>due tomorrow, 5pm</td><td>Nightly warehouse refresh failing</td><td>Hatcher &amp; Co. · <span class="pill red">Waiting</span></td></tr>
+            <tr><td class="num">TKT-121</td><td>due tomorrow, 9am</td><td>Export permissions error</td><td>Marlowe Clinic · <span class="pill amber">In progress</span></td></tr>
+          </tbody></table>
+        </div>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:14px;">
+        <div class="card">
+          <div class="panel-title"><h3>Today</h3><a href="#" data-goto="calendar">Calendar →</a></div>
+          <div class="msg"><div class="avatar">10a</div><div><div class="msg-subject">Ridgeline Dental — Phase 2 review</div><div class="msg-meta">Outlook · Zoom link attached</div></div></div>
+          <div class="msg"><div class="avatar">2p</div><div><div class="msg-subject">Discovery call — Marlowe Clinic referral</div><div class="msg-meta">Outlook · booked via scheduling link</div></div></div>
+        </div>
+        <div class="card">
+          <div class="panel-title"><h3>Cash position</h3><a href="#" data-goto="finance">Finance →</a></div>
+          <table><tbody>
+            <tr><td>Invoiced, awaiting payment</td><td class="num" style="text-align:right;">$4,850</td></tr>
+            <tr><td>Overdue &gt; 30 days</td><td class="num" style="text-align:right;">$0</td></tr>
+            <tr><td>Expenses this month</td><td class="num" style="text-align:right;">$740</td></tr>
+            <tr><td>Forecast, next 90 days</td><td class="num" style="text-align:right;">$27,600</td></tr>
+          </tbody></table>
+          <p class="msg-snippet" style="margin-top:8px;">Figures mirror Wave; the app holds the client and project links.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= INBOX ================= -->
+    <div class="view hidden" id="view-inbox">
+      <h1>Inbox</h1>
+      <p class="sub">9 messages across both Outlook inboxes · 3 need a reply</p>
+      <div class="card">
+        <div class="msg"><div class="avatar">DH</div><div style="flex:1;"><div class="msg-meta">Dana Hatcher · 8:41 AM · to clientcare@</div><div class="msg-subject">Can last week's numbers be trusted?</div><div class="msg-snippet">The 02:00 refresh job has failed three nights running with a permissions error on the finance schema…</div></div><span class="pill red">needs reply</span></div>
+        <div class="msg"><div class="avatar">RD</div><div style="flex:1;"><div class="msg-meta">Priya Nair · Yesterday · to admin@</div><div class="msg-subject">Phase 2 scope — one open question</div><div class="msg-snippet">Happy to sign off once we settle the third workstream, can we hop on a call?</div></div><span class="pill red">needs reply</span></div>
+        <div class="msg"><div class="avatar">MC</div><div style="flex:1;"><div class="msg-meta">Sam Ortiz · Mon · to clientcare@</div><div class="msg-subject">Invoice INV-2044 — quick question</div><div class="msg-snippet">Can you confirm this covers the August retainer or the setup fee?</div></div><span class="pill amber">flagged</span></div>
+        <div class="msg"><div class="avatar">OS</div><div style="flex:1;"><div class="msg-meta">Outlook system · Mon · to admin@</div><div class="msg-subject">Delivery report: 1 message delayed</div><div class="msg-snippet">A message to accounts@marloweclinic.com was delayed and later delivered.</div></div><span class="pill grey">read</span></div>
+      </div>
+      <div class="note"><b>How this works.</b> Both Outlook inboxes are connected through Microsoft Graph, so mail is read directly — no separate embed or bridge tool is needed to see it here. The buttons below (create ticket, log to timeline, save attachments) run against that same connection. See <a href="#" data-goto="spec">System spec</a> for the automation details.</div>
+      <div class="card" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn">Create ticket from this email</button>
+        <button class="btn ghost">Reply</button>
+        <button class="btn ghost">Log to contact timeline</button>
+        <button class="btn ghost">Save attachments to client folder</button>
+      </div>
+    </div>
+
+    <!-- ================= CALENDAR ================= -->
+    <div class="view hidden" id="view-calendar">
+      <h1>Calendar</h1>
+      <p class="sub">August 2026 · synced from Outlook Calendar (admin@)</p>
+      <div class="cal-grid">
+        <div class="cal-head">Mon</div><div class="cal-head">Tue</div><div class="cal-head">Wed</div><div class="cal-head">Thu</div><div class="cal-head">Fri</div><div class="cal-head">Sat</div><div class="cal-head">Sun</div>
+        <div class="cal-day"><span class="d">10</span></div>
+        <div class="cal-day"><span class="d">11</span><div class="cal-ev">10a Ridgeline review</div><div class="cal-ev">2p Discovery call</div></div>
+        <div class="cal-day"><span class="d">12</span><div class="cal-ev">SLA due — TKT-118</div></div>
+        <div class="cal-day"><span class="d">13</span></div>
+        <div class="cal-day"><span class="d">14</span><div class="cal-ev">Marlowe milestone</div></div>
+        <div class="cal-day"><span class="d">15</span></div>
+        <div class="cal-day"><span class="d">16</span></div>
+      </div>
+      <div class="note">Milestone and SLA due dates are pulled from Projects and Tickets, so a slipped project due date moves on this grid automatically. Everything else comes straight from Outlook Calendar.</div>
+    </div>
+
+    <!-- ================= CRM ================= -->
+    <div class="view hidden" id="view-crm">
+      <h1>CRM &amp; Leads</h1>
+      <p class="sub">One table for prospects and clients. The stage field carries them from a cold name to a paying retainer; nothing gets re-typed on the way.</p>
+      <div class="card">
+        <table>
+          <thead><tr><th>Client / lead</th><th>Stage</th><th>Primary contact</th><th>Packages</th><th>Value</th><th>Last touch</th></tr></thead>
+          <tbody>
+            <tr><td><b>Hatcher &amp; Co. Logistics</b></td><td><span class="pill brand">Client</span></td><td>Dana Hatcher</td><td>Data Warehousing (1)</td><td class="num">$4,200/mo</td><td>Today</td></tr>
+            <tr><td><b>Ridgeline Dental Group</b></td><td><span class="pill brand">Client</span></td><td>Priya Nair</td><td>Manual Data (7)</td><td class="num">$2,600</td><td>Yesterday</td></tr>
+            <tr><td><b>Marlowe Clinic</b></td><td><span class="pill amber">Offer sent</span></td><td>Sam Ortiz</td><td>Data Analysis (3)</td><td class="num">$3,100</td><td>Mon</td></tr>
+            <tr><td>Brightview Manufacturing</td><td><span class="pill grey">Engaging</span></td><td>Tom Alvarez</td><td>—</td><td class="num">$5,400</td><td>3 days ago</td></tr>
+            <tr><td>Cedar Grove Nonprofit</td><td><span class="pill grey">In contact</span></td><td>Renee Osei</td><td>—</td><td class="num">$1,800</td><td>1 wk ago</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ================= PROJECTS ================= -->
+    <div class="view hidden" id="view-projects">
+      <h1>Projects</h1>
+      <p class="sub">One project per package sold. Budget and spend roll up from time logged by contractors and rebilled expenses.</p>
+      <div class="card">
+        <table>
+          <thead><tr><th>Project</th><th>Client</th><th>Stage</th><th>Owner</th><th>Due</th><th>Budget used</th></tr></thead>
+          <tbody>
+            <tr><td>Warehouse refresh fix</td><td>Hatcher &amp; Co.</td><td><span class="pill red">Blocked</span></td><td>Yosef</td><td>13 Aug</td><td class="num">$1,120 / $2,000</td></tr>
+            <tr><td>Phase 2 — manual data batch</td><td>Ridgeline Dental</td><td><span class="pill amber">Build</span></td><td>Yosef</td><td>22 Aug</td><td class="num">$900 / $2,600</td></tr>
+            <tr><td>Analysis package — Q3</td><td>Marlowe Clinic</td><td><span class="pill grey">Scoping</span></td><td>Yosef</td><td>1 Sep</td><td class="num">$0 / $3,100</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ================= TICKETS ================= -->
+    <div class="view hidden" id="view-tickets">
+      <h1>Service Desk</h1>
+      <p class="sub">Every ticket starts as an email received on clientcare@ or admin@. Press <b>Create ticket</b> and a draft arrives pre-filled from the message.</p>
+      <div style="margin-bottom:12px;"><button class="btn">Create ticket from email</button></div>
+      <div class="card">
+        <table>
+          <thead><tr><th>ID</th><th>Subject</th><th>Client</th><th>Status</th><th>Priority</th><th>SLA</th><th>Source</th></tr></thead>
+          <tbody>
+            <tr><td class="num">TKT-118</td><td>Nightly warehouse refresh failing</td><td>Hatcher &amp; Co.</td><td><span class="pill red">Waiting</span></td><td>High</td><td>tomorrow, 5pm</td><td>Email</td></tr>
+            <tr><td class="num">TKT-121</td><td>Export permissions error</td><td>Marlowe Clinic</td><td><span class="pill amber">In progress</span></td><td>High</td><td>tomorrow, 9am</td><td>Email</td></tr>
+            <tr><td class="num">TKT-119</td><td>Add third analysis workstream</td><td>Ridgeline Dental</td><td><span class="pill grey">New</span></td><td>Medium</td><td>16 Aug</td><td>Email</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">Fields are drafted automatically from the source email (subject, priority, a two-sentence summary) and flagged low-confidence fields are marked for review before the ticket goes live. This is a one-shot drafting step on ticket creation — there is no standing assistant with access to the workspace.</div>
+    </div>
+
+    <!-- ================= FILES ================= -->
+    <div class="view hidden" id="view-files">
+      <h1>Files</h1>
+      <p class="sub">A folder per client, mirrored to OneDrive. The app holds the index — client, project, type, share state — so files are findable from the record they belong to.</p>
+      <div class="card">
+        <table>
+          <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>Sharing</th><th>Modified</th></tr></thead>
+          <tbody>
+            <tr><td>Hatcher &amp; Co. Logistics</td><td>Folder · 14 items</td><td>—</td><td>Client link</td><td>Today</td></tr>
+            <tr><td>refresh-log-0809.txt</td><td>Source data</td><td>18 KB</td><td>Internal</td><td>Today</td></tr>
+            <tr><td>screenshot-error.png</td><td>Working file</td><td>412 KB</td><td>Internal</td><td>Today</td></tr>
+            <tr><td>MSA — Ridgeline Dental Group.pdf</td><td>Contract</td><td>1.1 MB</td><td>Client link</td><td>14 Mar</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ================= FINANCE ================= -->
+    <div class="view hidden" id="view-finance">
+      <h1>Finance</h1>
+      <p class="sub">Wave is the ledger — the app is the view. Invoices and expenses are entered in Wave and mirrored here so they sit beside the client and project they belong to. Nothing is double-entered.</p>
+      <div class="grid cols-4">
+        <div class="card"><h3>Revenue YTD</h3><div class="stat">$48,900</div><div class="stat-note">+34% on 2025</div></div>
+        <div class="card"><h3>Expenses YTD</h3><div class="stat">$14,600</div><div class="stat-note">62% contractor cost</div></div>
+        <div class="card"><h3>Net margin</h3><div class="stat">71%</div><div class="stat-note">$34,300 retained</div></div>
+        <div class="card"><h3>Forecast 90d</h3><div class="stat">$27,600</div><div class="stat-note">retainers + weighted pipeline</div></div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="panel-title"><h3>Invoices</h3></div>
+        <table>
+          <thead><tr><th>Invoice</th><th>Client</th><th>Amount</th><th>Issued</th><th>Due</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td class="num">INV-2044</td><td>Hatcher &amp; Co.</td><td class="num">$4,200</td><td>1 Aug</td><td>31 Aug</td><td><span class="pill green">Sent</span></td></tr>
+            <tr><td class="num">INV-2045</td><td>Ridgeline Dental</td><td class="num">$2,600</td><td>5 Aug</td><td>4 Sep</td><td><span class="pill amber">Draft</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">Sync runs one way, Wave → the app, on an hourly schedule. Amounts are entered once, in Wave, and never reconciled here.</div>
+    </div>
+
+    <!-- ================= PEOPLE ================= -->
+    <div class="view hidden" id="view-people">
+      <h1>People</h1>
+      <p class="sub">You plus contractors. Rate and hours logged feed project cost; the access column is what each person can actually see in the app.</p>
+      <div class="card">
+        <table>
+          <thead><tr><th>Name</th><th>Role</th><th>Type</th><th>Rate</th><th>On projects</th><th>Access</th></tr></thead>
+          <tbody>
+            <tr><td>Yosef</td><td>Owner</td><td>Owner</td><td>—</td><td>All</td><td>Full</td></tr>
+            <tr><td>J. Alvarado</td><td>Data engineer</td><td>Contractor</td><td class="num">$65/hr</td><td>Warehouse refresh fix</td><td>Project only</td></tr>
+            <tr><td>K. Fischer</td><td>Analyst</td><td>Contractor</td><td class="num">$50/hr</td><td>Analysis package — Q3</td><td>Project only</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">Contractors are scoped to the project pages they're assigned to — never to the CRM or Finance data.</div>
+    </div>
+
+    <!-- ================= SPEC ================= -->
+    <div class="view hidden" id="view-spec">
+      <h1>System spec</h1>
+      <p class="sub">Data model, integrations, and security notes for building and hosting this as a real web app on Railway.</p>
+
+      <div class="security-note">
+        <h3>Security — read this before deploying</h3>
+        <p style="margin:0 0 8px;">Railway's proxy gives you HTTPS/TLS and network isolation automatically. It does <b>not</b> secure the app itself — that's on the app:</p>
+        <ul>
+          <li><b>Login for you.</b> This app should sit behind its own authentication (a login screen, or a Railway private network + something like Cloudflare Access in front of it) — not a public URL anyone can browse to.</li>
+          <li><b>OAuth, not passwords.</b> Connect Outlook and Wave through their OAuth flows. The app never sees or stores your Microsoft or Wave password.</li>
+          <li><b>Encrypt tokens at rest.</b> OAuth access/refresh tokens for Outlook and Wave get encrypted in the database (e.g. with a key stored in Railway's environment variables, not committed to the repo) — plain-text tokens in a table are the most common way this kind of app gets compromised.</li>
+          <li><b>Secrets in environment variables only.</b> Client IDs, client secrets, and encryption keys live in Railway's variable store, never in source control.</li>
+          <li><b>Scope the OAuth permissions tightly.</b> Request read/send mail and calendar scopes for the two Outlook inboxes — not full directory or admin scopes.</li>
+          <li><b>Session expiry + rate limiting</b> on any login and API endpoints, so a leaked link or brute-force attempt can't just sit there.</li>
+        </ul>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">1 · Companies</span>
+        <h3>Leads and clients in one table</h3>
+        <p>One row per organization, from cold name to retained client. Leads and clients stay in the same table — the stage field is what moves them, and splitting into two tables loses the history.</p>
+        <div class="spec-fields">fields: name, logo_url, stage (enum: not_contacted, in_contact, engaging, offer_sent, client, rejected), health (enum: green/amber/red), industry, source, website, billing_address, site_address, timezone, owner_id, client_since, wave_customer_id<br>
+        relations: contacts[], package_lines[], projects[], tickets[], files[], invoices[], emails[]<br>
+        computed: contract_value = sum(package_lines.line_total) · open_tickets = count(tickets where status != done) · last_touch = max(emails.date) · days_since_touch = now - last_touch</div>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">2 · Contacts</span>
+        <h3>Humans, not organizations</h3>
+        <div class="spec-fields">fields: full_name, role, email, phone, mobile, is_primary (bool), is_decision_maker (bool), notes, linkedin_url<br>relations: company_id, tickets_raised[], emails[]</div>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">3 · Package catalogue</span>
+        <h3>Three rows, rarely edited</h3>
+        <div class="spec-fields">rows: Manual Data · Data Warehousing · Data Analysis<br>fields: unit_price, unit_of_sale, billing_type (enum: one_off, retainer, hourly), default_duration_days, scope_template</div>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">4 · Package lines</span>
+        <h3>Where quantities live</h3>
+        <p>One row per package sold to one company, carrying a quantity — this is what makes "Manual Data (7)" or "Warehousing (1)" work as a single, queryable number instead of free text.</p>
+        <div class="spec-fields">fields: quantity, unit_price_override, status (enum: proposed, signed, delivered, cancelled), start_date<br>relations: company_id, package_id, project_id, invoice_id<br>computed: unit = unit_price_override ?? catalogue.unit_price · line_total = quantity * unit</div>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">5 · Projects</span>
+        <div class="spec-fields">fields: name, stage (enum: scoping, build, review, handover, blocked, closed), start_date, due_date, budget, owner_id, priority<br>relations: company_id, package_line_id, tasks[], time_entries[], expenses[], files[], tickets[], invoices[]<br>computed: progress = tasks_done/tasks_total · logged_cost = sum(time_entries.cost) · margin = budget - logged_cost - expenses · health = at_risk if days_left &lt; 5 and progress &lt; 80</div>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">6 · Tasks</span>
+        <div class="spec-fields">fields: title, status (enum: todo, doing, blocked, done), assignee_id, due_date, estimate_hours, is_milestone<br>relations: project_id, ticket_id (optional), time_entries[]</div>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">7 · Tickets</span>
+        <h3>The service desk</h3>
+        <div class="spec-fields">fields: ticket_no (auto, TKT-###), subject, status (enum: new, in_progress, waiting_on_client, done), priority (enum: low/medium/high/urgent), type, opened_at, sla_due_at, assignee_id, source (enum: email, form, call), summary, source_email_id, resolution<br>relations: company_id, contact_id, project_id, tasks[], files[]<br>computed: sla_due_at = opened_at + (4h urgent / 24h high / 72h other) · breach_risk = due_soon if open and &lt;24h left</div>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">8 · Emails</span>
+        <h3>A log, not a mail client</h3>
+        <div class="spec-fields">fields: subject, from_email, to_inbox (enum: clientcare@, admin@), received_at, snippet, graph_message_id, handled (bool), needs_reply (bool)<br>relations: company_id, contact_id, ticket_id</div>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">9 · Files index</span>
+        <div class="spec-fields">fields: file_name, storage_url (OneDrive), type (enum: source_data, working_file, deliverable, contract, template), size, sharing (enum: internal, client_link), modified_at, retention_until<br>relations: company_id, project_id, ticket_id</div>
+        <p>Keep large source data (raw exports, big scans) in OneDrive and store the link. Deliverables and contracts can be stored directly if you add object storage (e.g. S3-compatible) later — either way, the index table is what makes a file findable from the client record.</p>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">10 · Invoices &amp; 11 · Expenses</span>
+        <h3>Mirrors of Wave</h3>
+        <div class="spec-fields">invoices: number, amount, issued_date, due_date, status (enum: draft/sent/paid/overdue), wave_invoice_id, company_id, project_id<br>expenses: item, amount, date, category (enum: contractor, infrastructure, software, other), treatment (enum: rebilled, overhead), company_id, project_id, person_id</div>
+        <p><b>Rule:</b> Wave stays the ledger. Amounts are entered once, in Wave, and synced in — never edited or reconciled directly in this app.</p>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">12 · People &amp; time entries</span>
+        <div class="spec-fields">people: name, role, type (enum: owner, employee, contractor), rate, status, access_level, start_date<br>time_entries: date, hours, notes, person_id, project_id, task_id · computed: cost = hours * rate</div>
+        <p>Contractors get access scoped to the projects and tickets they're assigned to only — never to Companies, Invoices, Expenses, or People.</p>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">Integrations</span>
+        <h3>Other connections</h3>
+        <div class="integ-row"><div><div class="integ-name">Outlook (2 inboxes)</div><div class="integ-desc">Microsoft Graph API · read/send on clientcare@ and admin@; a webhook subscription creates an Emails row on arrival and matches the sender's domain to a Company.</div></div><span class="pill green">planned</span></div>
+        <div class="integ-row"><div><div class="integ-name">Outlook Calendar</div><div class="integ-desc">Microsoft Graph API · two-way sync so meetings show on the dashboard and milestone/SLA dates from Projects and Tickets show on the calendar.</div></div><span class="pill green">planned</span></div>
+        <div class="integ-row"><div><div class="integ-name">Wave</div><div class="integ-desc">Wave API · hourly one-way sync of invoice number, amount, and status into the Invoices/Expenses tables.</div></div><span class="pill green">planned</span></div>
+        <div class="integ-row"><div><div class="integ-name">OneDrive</div><div class="integ-desc">Client folder per company; the folder URL sits on the company record.</div></div><span class="pill grey">optional</span></div>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">Email → ticket flow</span>
+        <h3>How a ticket gets created</h3>
+        <p>1. A client email arrives on clientcare@ or admin@. 2. The Graph webhook logs it to Emails and links it to a Company by sender domain (unmatched senders land in a "needs linking" view). 3. Nothing else happens automatically — the email sits in the Inbox view with a <b>Create ticket</b> button. 4. Pressing it sends the email body to a one-shot model call that fills in subject, type, priority, a short summary, and a suggested first step, and copies attachments to the client's folder. 5. Low-confidence fields (usually priority and SLA) are flagged for review before the ticket goes live.</p>
+        <p style="color:var(--muted);">This is a single API call per ticket, not a standing assistant — it has no memory, no ongoing access to the workspace, and no ability to act on its own.</p>
+      </div>
+
+      <div class="spec-block">
+        <span class="tag">Build order</span>
+        <div class="spec-fields">1. Package catalogue, People — small and static.
+2. Companies, Contacts, Package lines. Add the computed fields.
+3. Projects and Tasks; wire the rollups.
+4. Tickets and Emails; add SLA logic.
+5. Files, Invoices, Expenses, Time entries.
+6. Build the Dashboard last, from the tables above.
+7. Wire the two automations: Outlook → Emails webhook, and the Create ticket action.
+8. Deploy to Railway; add auth, encrypted token storage, and OAuth scopes before connecting real accounts.</div>
+      </div>
+
+      <p class="msg-snippet">Client names throughout this mockup are stand-ins.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const buttons = document.querySelectorAll('.nav-btn');
+  const views = document.querySelectorAll('.view');
+  const crumbLabel = document.getElementById('crumbLabel');
+
+  function goto(id){
+    views.forEach(v => v.classList.add('hidden'));
+    buttons.forEach(b => b.classList.remove('active'));
+    const view = document.getElementById('view-' + id);
+    const btn = document.querySelector('.nav-btn[data-view="' + id + '"]');
+    if(view) view.classList.remove('hidden');
+    if(btn){ btn.classList.add('active'); crumbLabel.textContent = btn.textContent.trim().replace(/\d+$/, '').trim(); }
+    window.scrollTo(0,0);
+  }
+
+  buttons.forEach(b => b.addEventListener('click', () => goto(b.dataset.view)));
+  document.querySelectorAll('[data-goto]').forEach(el => {
+    el.addEventListener('click', (e) => { e.preventDefault(); goto(el.dataset.goto); });
+  });
+</script>
+</body>
+</html>
