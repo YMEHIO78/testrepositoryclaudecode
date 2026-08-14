@@ -38,6 +38,33 @@ whatever you set `AUTH_USER` / `AUTH_PASS` to.
 Railway gives you HTTPS and network isolation on that domain by default.
 Everything below is still on you.
 
+## Outlook mail
+
+Reads and replies to whatever mailboxes you connect, via Microsoft Graph
+(delegated permissions: `Mail.Read`, `Mail.Send`, `offline_access`).
+
+Setup:
+
+1. Register an app in Microsoft Entra (portal.azure.com → Entra ID → App
+   registrations), single tenant. Redirect URI (Web):
+   `https://<your-domain>/auth/microsoft/callback`.
+2. Add delegated Graph permissions `Mail.Read`, `Mail.Send`,
+   `offline_access`, grant admin consent.
+3. Create a client secret.
+4. Set `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_TENANT_ID`, and
+   `MS_MAILBOXES` (comma-separated list of the mailbox addresses you want
+   connectable — anything not in this list is rejected) in Railway
+   Variables.
+5. In the app's top bar, click "Connect" next to each configured
+   mailbox and sign in. Tokens are encrypted (`lib/crypto.js`) and stored
+   in `oauth_tokens`, refreshed automatically via the stored refresh
+   token — no need to reconnect unless a mailbox goes unused for ~90
+   days (Microsoft expires unused refresh tokens).
+
+`/auth/microsoft/start` only accepts an `account` value present in
+`MS_MAILBOXES`, so the connect flow can't be pointed at an arbitrary
+mailbox even by someone poking at the URL directly.
+
 ## Security — done so far, and what's still on you
 
 Railway's proxy secures the network path to your app. On top of that,
@@ -50,9 +77,9 @@ this repo now has:
   keyed off Railway's `X-Real-IP` header (see the comment in `server.js`
   for why — their proxy chain doesn't suit Express's default
   `trust proxy` hop-counting).
-- **A place for encrypted tokens.** The `oauth_tokens` table
-  (`lib/migrate.js`) and AES-256-GCM helpers (`lib/crypto.js`) are ready
-  for when the Outlook/Wave OAuth flows land — nothing writes to it yet.
+- **Encrypted token storage.** The `oauth_tokens` table (`lib/migrate.js`)
+  and AES-256-GCM helpers (`lib/crypto.js`) hold Outlook mail tokens now;
+  ready for Calendar and Wave when those land too.
 
 Still to do before connecting real accounts:
 
@@ -78,10 +105,11 @@ ready to build the real backend behind this front end.
 ```
 public/index.html   the app (dashboard, CRM, tickets, projects, finance, spec)
 views/login.html     login form (served outside the auth gate)
-server.js             Express server: session auth, rate limiting, static serving
+server.js             Express server: session auth, rate limiting, static serving, mail routes
 lib/db.js             Postgres connection pool
 lib/migrate.js         creates the oauth_tokens table on startup
 lib/crypto.js           AES-256-GCM helpers for encrypting tokens at rest
+lib/msgraph.js          Microsoft Graph OAuth + mail API calls
 package.json
 .env.example          placeholders for the secrets you'll need
 ```

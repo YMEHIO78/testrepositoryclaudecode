@@ -95,6 +95,17 @@
   .msg-subject{font-weight:600;font-size:13px;margin:2px 0;}
   .msg-snippet{font-size:12.5px;color:var(--muted);}
 
+  .msg-row{padding:10px;border-bottom:1px solid var(--line);}
+  .msg-row:last-child{border-bottom:none;}
+  .msg-row-top{display:flex;gap:10px;align-items:flex-start;}
+  .msg-actions{display:flex;gap:6px;flex-shrink:0;}
+  .msg-actions button{background:none;border:1px solid var(--line);border-radius:7px;padding:5px 10px;font-size:11.5px;color:var(--ink);cursor:pointer;}
+  .msg-actions button:hover{background:var(--paper);}
+  .reply-box{margin:10px 0 0 40px;display:flex;flex-direction:column;gap:6px;}
+  .reply-box textarea{width:100%;min-height:70px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);resize:vertical;}
+  .reply-box .row{display:flex;gap:8px;align-items:center;}
+  .reply-status{font-size:11.5px;color:var(--muted);}
+
   .btn{display:inline-flex;align-items:center;gap:6px;background:var(--brand);color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;}
   .btn.ghost{background:none;border:1px solid var(--line);color:var(--ink);}
   .btn.small{padding:5px 10px;font-size:11.5px;}
@@ -168,12 +179,13 @@
       <div class="crumb">Pocket Data Office / <b id="crumbLabel">Dashboard</b></div>
       <div class="connected">
         <span><span class="dot"></span>Connected</span>
-        <span class="chip">clientcare@pocketdataoffice.com</span>
-        <span class="chip">admin@pocketdataoffice.com</span>
+        <span id="mailboxChips">Loading mailboxes…</span>
         <span class="chip">Outlook Calendar</span>
         <span class="chip">Wave · accounting</span>
       </div>
     </div>
+
+    <div id="mailBanner" class="hidden" style="margin:14px 24px 0;padding:8px 12px;border-radius:8px;font-size:12.5px;"></div>
 
     <!-- ================= DASHBOARD ================= -->
     <div class="view" id="view-dash">
@@ -225,17 +237,11 @@
     <!-- ================= INBOX ================= -->
     <div class="view hidden" id="view-inbox">
       <h1>Inbox</h1>
-      <p class="sub">9 messages across both Outlook inboxes · 3 need a reply</p>
-      <div class="card">
-        <div class="msg"><div class="avatar">DH</div><div style="flex:1;"><div class="msg-meta">Dana Hatcher · 8:41 AM · to clientcare@</div><div class="msg-subject">Can last week's numbers be trusted?</div><div class="msg-snippet">The 02:00 refresh job has failed three nights running with a permissions error on the finance schema…</div></div><span class="pill red">needs reply</span></div>
-        <div class="msg"><div class="avatar">RD</div><div style="flex:1;"><div class="msg-meta">Priya Nair · Yesterday · to admin@</div><div class="msg-subject">Phase 2 scope — one open question</div><div class="msg-snippet">Happy to sign off once we settle the third workstream, can we hop on a call?</div></div><span class="pill red">needs reply</span></div>
-        <div class="msg"><div class="avatar">MC</div><div style="flex:1;"><div class="msg-meta">Sam Ortiz · Mon · to clientcare@</div><div class="msg-subject">Invoice INV-2044 — quick question</div><div class="msg-snippet">Can you confirm this covers the August retainer or the setup fee?</div></div><span class="pill amber">flagged</span></div>
-        <div class="msg"><div class="avatar">OS</div><div style="flex:1;"><div class="msg-meta">Outlook system · Mon · to admin@</div><div class="msg-subject">Delivery report: 1 message delayed</div><div class="msg-snippet">A message to accounts@marloweclinic.com was delayed and later delivered.</div></div><span class="pill grey">read</span></div>
-      </div>
-      <div class="note"><b>How this works.</b> Both Outlook inboxes are connected through Microsoft Graph, so mail is read directly — no separate embed or bridge tool is needed to see it here. The buttons below (create ticket, log to timeline, save attachments) run against that same connection. See <a href="#" data-goto="spec">System spec</a> for the automation details.</div>
+      <p class="sub" id="inboxSub">Loading messages…</p>
+      <div class="card" id="inboxMessages"></div>
+      <div class="note"><b>How this works.</b> Connected Outlook inboxes are read directly through Microsoft Graph — no separate embed or bridge tool is needed to see it here. See <a href="#" data-goto="spec">System spec</a> for the automation details.</div>
       <div class="card" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn">Create ticket from this email</button>
-        <button class="btn ghost">Reply</button>
         <button class="btn ghost">Log to contact timeline</button>
         <button class="btn ghost">Save attachments to client folder</button>
       </div>
@@ -507,6 +513,133 @@
   document.querySelectorAll('[data-goto]').forEach(el => {
     el.addEventListener('click', (e) => { e.preventDefault(); goto(el.dataset.goto); });
   });
+
+  // --- Outlook mail (live via Microsoft Graph) ---
+  function escapeHtml(s){
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function timeAgo(iso){
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    const diffMin = Math.round((Date.now() - d.getTime()) / 60000);
+    if (diffMin < 60) return diffMin <= 1 ? 'just now' : diffMin + 'm ago';
+    if (diffMin < 60*24) return Math.round(diffMin/60) + 'h ago';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  function showBanner(text, kind){
+    const el = document.getElementById('mailBanner');
+    el.textContent = text;
+    el.style.background = kind === 'error' ? 'var(--red-soft)' : 'var(--green-soft)';
+    el.style.color = kind === 'error' ? 'var(--red)' : 'var(--green)';
+    el.classList.remove('hidden');
+  }
+
+  async function loadMailboxes(){
+    const wrap = document.getElementById('mailboxChips');
+    try {
+      const res = await fetch('/api/mailboxes');
+      const boxes = await res.json();
+      if (!boxes.length) { wrap.innerHTML = '<span class="chip">No mailboxes configured</span>'; return; }
+      wrap.innerHTML = boxes.map(b => b.connected
+        ? `<span class="chip">${escapeHtml(b.email)}</span>`
+        : `<a class="chip" style="color:var(--brand);" href="/auth/microsoft/start?account=${encodeURIComponent(b.email)}">Connect ${escapeHtml(b.email)}</a>`
+      ).join(' ');
+    } catch (err) {
+      wrap.innerHTML = '<span class="chip">Mailbox status unavailable</span>';
+    }
+  }
+
+  function renderMessage(m){
+    const initials = (m.from || '?').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+    const pill = m.isRead ? '<span class="pill grey">read</span>' : '<span class="pill red">unread</span>';
+    return `
+      <div class="msg-row" data-id="${escapeHtml(m.id)}" data-account="${escapeHtml(m.account)}">
+        <div class="msg-row-top">
+          <div class="avatar">${escapeHtml(initials)}</div>
+          <div style="flex:1;">
+            <div class="msg-meta">${escapeHtml(m.from)} · ${timeAgo(m.receivedDateTime)} · to ${escapeHtml(m.account)}</div>
+            <div class="msg-subject">${escapeHtml(m.subject || '(no subject)')}</div>
+            <div class="msg-snippet">${escapeHtml(m.preview)}</div>
+          </div>
+          <div class="msg-actions">
+            ${pill}
+            <button type="button" class="reply-toggle">Reply</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  async function loadInbox(){
+    const sub = document.getElementById('inboxSub');
+    const wrap = document.getElementById('inboxMessages');
+    try {
+      const res = await fetch('/api/inbox');
+      if (!res.ok) throw new Error('request failed');
+      const data = await res.json();
+      if (!data.accounts.length) {
+        sub.textContent = 'No mailboxes connected yet — use the chips in the top bar to connect one.';
+        wrap.innerHTML = '';
+        return;
+      }
+      sub.textContent = `${data.messages.length} messages across ${data.accounts.length} connected inbox${data.accounts.length === 1 ? '' : 'es'}`;
+      wrap.innerHTML = data.messages.length
+        ? data.messages.map(renderMessage).join('')
+        : '<div class="msg-row"><span class="msg-snippet">No messages found.</span></div>';
+    } catch (err) {
+      sub.textContent = 'Could not load mail right now.';
+      wrap.innerHTML = '';
+    }
+  }
+
+  document.getElementById('inboxMessages').addEventListener('click', (e) => {
+    const btn = e.target.closest('.reply-toggle');
+    if (!btn) return;
+    const row = btn.closest('.msg-row');
+    let box = row.querySelector('.reply-box');
+    if (box) { box.remove(); return; }
+    box = document.createElement('div');
+    box.className = 'reply-box';
+    box.innerHTML = `
+      <textarea placeholder="Write a reply…"></textarea>
+      <div class="row">
+        <button type="button" class="btn send-reply">Send reply</button>
+        <span class="reply-status"></span>
+      </div>`;
+    row.appendChild(box);
+    box.querySelector('textarea').focus();
+
+    box.querySelector('.send-reply').addEventListener('click', async () => {
+      const comment = box.querySelector('textarea').value.trim();
+      const status = box.querySelector('.reply-status');
+      if (!comment) { status.textContent = 'Write something first.'; return; }
+      status.textContent = 'Sending…';
+      try {
+        const res = await fetch('/api/inbox/reply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account: row.dataset.account, messageId: row.dataset.id, comment }),
+        });
+        if (!res.ok) throw new Error('failed');
+        status.textContent = 'Sent.';
+        setTimeout(() => box.remove(), 1200);
+      } catch (err) {
+        status.textContent = 'Failed to send — try again.';
+      }
+    });
+  });
+
+  (function initMail(){
+    const params = new URLSearchParams(location.search);
+    if (params.get('connected')) showBanner(`Connected ${params.get('connected')}.`, 'ok');
+    if (params.get('mailError')) showBanner(`Couldn't connect that mailbox (${params.get('mailError')}).`, 'error');
+    if (params.get('connected') || params.get('mailError')) {
+      history.replaceState({}, '', location.pathname);
+    }
+    loadMailboxes();
+    loadInbox();
+  })();
 </script>
 </body>
 </html>
