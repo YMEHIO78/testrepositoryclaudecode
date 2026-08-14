@@ -6,11 +6,30 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Railway sits in front of the app as a proxy — trust its X-Forwarded-For
+// so rate limiting keys on the real client IP, not Railway's edge IP.
+app.set('trust proxy', 1);
+
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
+
+// Throttle repeated failed logins per IP to make password brute-forcing
+// impractical. Successful requests (anything not returning an error
+// status) don't count against the limit.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: 'Too many failed login attempts. Try again in 15 minutes.',
+});
+
+app.use(loginLimiter);
 
 // Basic auth gate — placeholder until real login is built. Credentials
 // live only in Railway's Variables tab (AUTH_USER / AUTH_PASS).
