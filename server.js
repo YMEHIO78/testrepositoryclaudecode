@@ -11,15 +11,16 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Railway sits in front of the app as a proxy — trust its X-Forwarded-For
-// so rate limiting keys on the real client IP, not Railway's edge IP.
-app.set('trust proxy', 1);
-
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
 // Throttle repeated failed logins per IP to make password brute-forcing
 // impractical. Successful requests (anything not returning an error
 // status) don't count against the limit.
+//
+// Railway's edge sets X-Real-IP to the actual client IP (their proxy
+// chain doesn't give a fixed-depth X-Forwarded-For, so Express's
+// built-in `trust proxy` hop-counting resolves the wrong address here —
+// see https://docs.railway.com/networking/public-networking/specs-and-limits).
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -27,6 +28,7 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   skipSuccessfulRequests: true,
   message: 'Too many failed login attempts. Try again in 15 minutes.',
+  keyGenerator: (req) => req.headers['x-real-ip'] || req.socket.remoteAddress,
 });
 
 app.use(loginLimiter);
