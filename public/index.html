@@ -44,6 +44,8 @@
   .nav-badge{font-family:'IBM Plex Mono',monospace;font-size:10px;background:rgba(255,255,255,.16);padding:1px 6px;border-radius:10px;}
   .nav-btn.active .nav-badge{background:var(--brand-soft);color:var(--brand);}
   .rail-foot{margin-top:auto;font-size:11px;color:#b9a9ff;padding:0 10px;}
+  .logout-btn{background:none;border:none;color:#b9a9ff;text-decoration:underline;cursor:pointer;font-size:11px;padding:0;margin-top:6px;font-family:inherit;}
+  .logout-btn:hover{color:#fff;}
 
   .main{display:flex;flex-direction:column;min-height:100vh;}
   .topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--line);background:var(--panel);}
@@ -154,7 +156,10 @@
       <button class="nav-btn" data-view="spec">System spec</button>
     </div>
 
-    <div class="rail-foot">Pocket Data Office · internal build</div>
+    <div class="rail-foot">
+      Pocket Data Office · internal build
+      <form method="POST" action="/logout"><button type="submit" class="logout-btn">Sign out</button></form>
+    </div>
   </nav>
 
   <!-- MAIN -->

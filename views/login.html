@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in · Pocket Data Office</title>
+<style>
+  :root{
+    --ink:#1c1a1c;
+    --paper:#f3f1ec;
+    --panel:#ffffff;
+    --line:#e2ddd2;
+    --muted:#8a8683;
+    --brand:#1800ad;
+    --brand-soft:#e9e6fb;
+    --red:#b23a2f;
+    --red-soft:#fbe9e6;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;font-size:14px;}
+  .card{width:320px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:28px;box-shadow:0 1px 2px rgba(0,0,0,.03);}
+  .brand{font-weight:700;letter-spacing:1px;font-size:15px;color:var(--brand);margin-bottom:2px;}
+  .brand small{display:block;color:var(--muted);font-weight:400;letter-spacing:2px;font-size:10px;margin-top:2px;text-transform:uppercase;}
+  h1{font-size:16px;margin:20px 0 4px;}
+  p.sub{color:var(--muted);font-size:12px;margin:0 0 20px;}
+  label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 6px;}
+  input{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;background:var(--paper);color:var(--ink);}
+  input:focus{outline:2px solid var(--brand-soft);border-color:var(--brand);}
+  button{width:100%;margin-top:20px;padding:10px;border:none;border-radius:8px;background:var(--brand);color:#fff;font-size:14px;font-weight:600;cursor:pointer;}
+  button:hover{opacity:.92;}
+  .error{margin-top:14px;padding:8px 10px;background:var(--red-soft);color:var(--red);border-radius:8px;font-size:12.5px;}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">POCKET DATA OFFICE<small>internal build</small></div>
+    <h1>Sign in</h1>
+    <p class="sub">This workspace is restricted to authorized users.</p>
+    <form method="POST" action="/login">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
+    </form>
+    <div id="error" class="error" style="display:none"></div>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    if (params.get('error')) {
+      const el = document.getElementById('error');
+      el.textContent = params.get('error') === 'rate_limited'
+        ? 'Too many failed attempts. Try again later.'
+        : 'Incorrect username or password.';
+      el.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
