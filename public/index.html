@@ -106,6 +106,14 @@
   .reply-box .row{display:flex;gap:8px;align-items:center;}
   .reply-status{font-size:11.5px;color:var(--muted);}
 
+  .int-label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600;margin-bottom:4px;}
+  .int-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);}
+  .int-row:last-child{border-bottom:none;}
+  .int-btn{border:none;border-radius:20px;padding:5px 14px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;}
+  .int-btn.connected{background:var(--green-soft);color:var(--green);}
+  .int-btn.connected:hover{background:var(--red-soft);color:var(--red);}
+  .int-btn.disconnected{background:var(--brand);color:#fff;}
+
   .btn{display:inline-flex;align-items:center;gap:6px;background:var(--brand);color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;}
   .btn.ghost{background:none;border:1px solid var(--line);color:var(--ink);}
   .btn.small{padding:5px 10px;font-size:11.5px;}
@@ -164,6 +172,7 @@
 
     <div class="nav-group">
       <div class="nav-label">Dev</div>
+      <button class="nav-btn" data-view="integrations">Integrations</button>
       <button class="nav-btn" data-view="spec">System spec</button>
     </div>
 
@@ -371,6 +380,29 @@
         </table>
       </div>
       <div class="note">Contractors are scoped to the project pages they're assigned to — never to the CRM or Finance data.</div>
+    </div>
+
+    <!-- ================= INTEGRATIONS ================= -->
+    <div class="view hidden" id="view-integrations">
+      <h1>Integrations</h1>
+      <p class="sub">Connect or disconnect the external accounts this app reads from and acts on.</p>
+
+      <div class="card" style="margin-bottom:14px;">
+        <h3 style="margin-bottom:2px;">Outlook</h3>
+        <p class="msg-snippet" style="margin-bottom:12px;">Microsoft Graph · delegated permissions (Mail.Read, Mail.Send, offline_access)</p>
+
+        <div class="int-label">Email</div>
+        <div id="intOutlookMail"><div class="int-row"><span class="msg-snippet">Loading…</span></div></div>
+
+        <div class="int-label" style="margin-top:14px;">Calendar</div>
+        <div class="int-row"><span class="msg-snippet">Not built yet — see <a href="#" data-goto="spec">System spec</a> for the plan.</span></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-bottom:2px;">Wave</h3>
+        <p class="msg-snippet" style="margin-bottom:12px;">Accounting · invoices, expenses</p>
+        <div class="int-row"><span class="msg-snippet">Not built yet — see <a href="#" data-goto="spec">System spec</a> for the plan.</span></div>
+      </div>
     </div>
 
     <!-- ================= SPEC ================= -->
@@ -630,6 +662,53 @@
     });
   });
 
+  async function loadIntegrations(){
+    const wrap = document.getElementById('intOutlookMail');
+    try {
+      const res = await fetch('/api/mailboxes');
+      const boxes = await res.json();
+      wrap.innerHTML = boxes.length
+        ? boxes.map(b => `
+            <div class="int-row">
+              <span>${escapeHtml(b.email)}</span>
+              <button type="button" class="int-btn ${b.connected ? 'connected' : 'disconnected'}" data-email="${escapeHtml(b.email)}" data-connected="${b.connected}">${b.connected ? 'Connected' : 'Connect'}</button>
+            </div>`).join('')
+        : '<div class="int-row"><span class="msg-snippet">No mailboxes configured (set MS_MAILBOXES in Railway).</span></div>';
+    } catch (err) {
+      wrap.innerHTML = '<div class="int-row"><span class="msg-snippet">Mailbox status unavailable.</span></div>';
+    }
+  }
+
+  document.getElementById('intOutlookMail').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.int-btn');
+    if (!btn) return;
+    const email = btn.dataset.email;
+
+    if (btn.dataset.connected !== 'true') {
+      location.href = `/auth/microsoft/start?account=${encodeURIComponent(email)}`;
+      return;
+    }
+
+    if (!confirm(`Disconnect ${email}? You'll need to reconnect it to read or reply to this mailbox again.`)) return;
+    btn.disabled = true;
+    btn.textContent = 'Disconnecting…';
+    try {
+      const res = await fetch('/api/mailboxes/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) throw new Error('failed');
+      loadIntegrations();
+      loadMailboxes();
+      loadInbox();
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Connected';
+      alert('Failed to disconnect — try again.');
+    }
+  });
+
   (function initMail(){
     const params = new URLSearchParams(location.search);
     if (params.get('connected')) showBanner(`Connected ${params.get('connected')}.`, 'ok');
@@ -639,6 +718,7 @@
     }
     loadMailboxes();
     loadInbox();
+    loadIntegrations();
   })();
 </script>
 </body>

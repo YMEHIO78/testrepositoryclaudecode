@@ -159,6 +159,15 @@ app.get('/api/mailboxes', async (req, res) => {
   res.json(configuredMailboxes().map((email) => ({ email, connected: connected.has(email) })));
 });
 
+app.post('/api/mailboxes/disconnect', express.json(), async (req, res) => {
+  const { email } = req.body || {};
+  if (!configuredMailboxes().includes(email)) {
+    return res.status(400).json({ error: 'Unknown mailbox.' });
+  }
+  await msgraph.disconnectAccount(email);
+  res.status(204).end();
+});
+
 app.get('/api/inbox', async (req, res) => {
   try {
     const accounts = (await msgraph.listConnectedAccounts())
