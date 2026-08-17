@@ -124,6 +124,50 @@ because the next sync would overwrite any local change. Reschedule or
 cancel in Calendly instead. Disconnecting removes the stored token and
 every synced booking; nothing changes in Calendly itself.
 
+## Service desk
+
+Real tickets, raised by hand or created from an email.
+
+- **Reference numbers** (`TKT-101`…) come from their own Postgres
+  sequence rather than the primary key, so they stay stable and readable.
+- **SLA dates are projected onto the calendar** as `source='ticket'`
+  events, which is what makes the "SLA due — TKT-118" line real. Move the
+  date and the calendar entry moves; resolve or close the ticket and it
+  disappears; clear the date and it's removed. If the calendar entry gets
+  deleted behind the app's back, the next save recreates it rather than
+  silently losing the deadline.
+- **Tickets link to a client** from the CRM, and to the email they came
+  from (account + UID) so a ticket can be traced back to its source.
+- Overdue and due-within-24h SLAs are colour-coded in the list.
+
+## Inbox
+
+Beyond listing mail, a message can be opened and worked on:
+
+- **Full body**, plain text or original HTML. HTML renders in a
+  `sandbox`-attribute iframe — remote mail carries scripts and trackers,
+  and sandboxing means none of it executes or can reach back into the
+  app.
+- **Reply** with the original quoted underneath.
+- **Mark read/unread**; opening a message marks it read like any mail
+  client.
+- **Delete** moves the message to the server's Trash folder (found via
+  its `\Trash` special-use flag) rather than setting `\Deleted`, so it
+  stays recoverable from any mail client. Falls back to the flag if no
+  Trash folder is advertised.
+- **Add as client** creates a CRM client plus a contact from the sender
+  in one step — after which their mail is labelled automatically.
+- **Create ticket** opens a ticket pre-filled with the subject and body,
+  linked to the sender's client if they're known, with an SLA date that
+  lands on the calendar.
+
+Message bodies are fetched only when a message is opened. Downloading
+bodies for the whole list would make the inbox crawl, so the list query
+stays on envelope data.
+
+**Attachments are listed but not downloadable** — the filenames and
+sizes show, wiring up the actual download is still to do.
+
 ## CRM
 
 Real clients and contacts, replacing the mockup table. Built first
@@ -305,6 +349,7 @@ lib/calendly.js         Calendly API client + booking sync
 lib/google.js           Google Calendar bridge (mirrors events so Calendly sees them)
 lib/scheduling.js       booking pages: availability, slot maths, bookings
 lib/crm.js              clients, contacts, and inbox sender matching
+lib/tickets.js          service desk, including SLA-to-calendar projection
 package.json
 .env.example          placeholders for the secrets you'll need
 ```

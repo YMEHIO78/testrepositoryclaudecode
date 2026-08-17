@@ -17,6 +17,7 @@
     "express-session": "^1.18.0",
     "imapflow": "^1.0.164",
     "luxon": "^3.5.0",
+    "mailparser": "^3.7.1",
     "nodemailer": "^6.9.15",
     "pg": "^8.13.0"
   }

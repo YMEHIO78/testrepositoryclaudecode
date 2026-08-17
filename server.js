@@ -16,6 +16,7 @@ const calendly = require('./lib/calendly');
 const google = require('./lib/google');
 const scheduling = require('./lib/scheduling');
 const crm = require('./lib/crm');
+const tickets = require('./lib/tickets');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -356,6 +357,76 @@ app.get('/api/inbox', async (req, res) => {
   }
 });
 
+// Full message with body. Separate from the list because downloading
+// bodies for every message would make the inbox unusably slow.
+app.get('/api/inbox/message', async (req, res) => {
+  const { account, uid } = req.query;
+  if (!configuredMailboxes().includes(account) || !uid) {
+    return res.status(400).json({ error: 'account and uid are required.' });
+  }
+  try {
+    const message = await mail.getMessage(account, uid);
+    if (!message) return res.status(404).json({ error: 'That message no longer exists.' });
+
+    try {
+      const matches = await crm.matchEmails([message.fromAddress]);
+      const hit = matches[(message.fromAddress || '').toLowerCase()];
+      if (hit) message.client = { id: hit.clientId, name: hit.clientName, stage: hit.stage };
+    } catch (err) {
+      console.error('CRM lookup failed for message:', err.message);
+    }
+
+    res.json(message);
+  } catch (err) {
+    console.error('Failed to load message:', err);
+    res.status(502).json({ error: `Could not open that message: ${err.message}` });
+  }
+});
+
+app.post('/api/inbox/read', express.json(), async (req, res) => {
+  const { account, uid, read } = req.body || {};
+  if (!configuredMailboxes().includes(account) || !uid) {
+    return res.status(400).json({ error: 'account and uid are required.' });
+  }
+  try {
+    await mail.setRead(account, uid, read !== false);
+    res.status(204).end();
+  } catch (err) {
+    console.error('Failed to change read state:', err);
+    res.status(502).json({ error: 'Could not update that message.' });
+  }
+});
+
+app.post('/api/inbox/delete', express.json(), async (req, res) => {
+  const { account, uid } = req.body || {};
+  if (!configuredMailboxes().includes(account) || !uid) {
+    return res.status(400).json({ error: 'account and uid are required.' });
+  }
+  try {
+    res.json(await mail.deleteMessage(account, uid));
+  } catch (err) {
+    console.error('Failed to delete message:', err);
+    res.status(502).json({ error: 'Could not delete that message.' });
+  }
+});
+
+// Turn a sender into a client + contact in one step, so mail from them
+// is labelled from then on.
+app.post('/api/inbox/to-client', express.json(), async (req, res) => {
+  const { clientName, contactName, email } = req.body || {};
+  if (!clientName || !email) {
+    return res.status(400).json({ error: 'clientName and email are required.' });
+  }
+  try {
+    const client = await crm.createClient({ name: clientName, stage: 'in_contact', lastTouchAt: new Date().toISOString() });
+    await crm.createContact(client.id, { name: contactName || email, email, isPrimary: true });
+    res.status(201).json(await crm.getClient(client.id));
+  } catch (err) {
+    console.error('Failed to create client from email:', err);
+    res.status(500).json({ error: 'Could not create that client.' });
+  }
+});
+
 app.post('/api/inbox/reply', express.json(), async (req, res) => {
   const { account, to, subject, messageId, comment } = req.body || {};
   if (!configuredMailboxes().includes(account) || !to || !comment) {
@@ -530,6 +601,49 @@ app.patch('/api/crm/contacts/:id', express.json(), async (req, res) => {
 
 app.delete('/api/crm/contacts/:id', async (req, res) => {
   const removed = await crm.deleteContact(Number(req.params.id));
+  if (!removed) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
+});
+
+// --- Service desk ---
+
+app.get('/api/tickets', async (req, res) => {
+  try {
+    res.json({
+      statuses: tickets.STATUSES,
+      priorities: tickets.PRIORITIES,
+      tickets: await tickets.listTickets({ openOnly: req.query.open === '1' }),
+      stats: await tickets.stats(),
+    });
+  } catch (err) {
+    console.error('Failed to list tickets:', err);
+    res.status(500).json({ error: 'Could not load tickets.' });
+  }
+});
+
+app.post('/api/tickets', express.json(), async (req, res) => {
+  if (!req.body?.subject) return res.status(400).json({ error: 'A subject is required.' });
+  try {
+    res.status(201).json(await tickets.createTicket(req.body));
+  } catch (err) {
+    console.error('Failed to create ticket:', err);
+    res.status(500).json({ error: 'Could not create that ticket.' });
+  }
+});
+
+app.patch('/api/tickets/:id', express.json(), async (req, res) => {
+  try {
+    const updated = await tickets.updateTicket(Number(req.params.id), req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Not found.' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Failed to update ticket:', err);
+    res.status(500).json({ error: 'Could not update that ticket.' });
+  }
+});
+
+app.delete('/api/tickets/:id', async (req, res) => {
+  const removed = await tickets.deleteTicket(Number(req.params.id));
   if (!removed) return res.status(404).json({ error: 'Not found.' });
   res.status(204).end();
 });

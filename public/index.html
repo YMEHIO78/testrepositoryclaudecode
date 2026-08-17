@@ -105,6 +105,15 @@
   .reply-box textarea{width:100%;min-height:70px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);resize:vertical;}
   .reply-box .row{display:flex;gap:8px;align-items:center;}
   .reply-status{font-size:11.5px;color:var(--muted);}
+  .msg-row.open{background:#fbfaf7;}
+  .msg-body{margin:10px 0 0 40px;padding:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px;}
+  .msg-body pre{white-space:pre-wrap;word-wrap:break-word;font-family:inherit;font-size:13px;margin:0;max-height:420px;overflow-y:auto;}
+  .msg-body iframe{width:100%;height:420px;border:1px solid var(--line);border-radius:6px;background:#fff;}
+  .msg-toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+  .msg-toolbar button{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:5px 10px;font-size:11.5px;color:var(--ink);cursor:pointer;font-family:inherit;}
+  .msg-toolbar button:hover{border-color:var(--brand);color:var(--brand);}
+  .msg-attach{margin-top:8px;font-size:11.5px;color:var(--muted);}
+  .body-toggle{margin-left:auto;}
 
   .int-label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600;margin-bottom:4px;}
   .int-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);}
@@ -276,12 +285,7 @@
       <h1>Inbox</h1>
       <p class="sub" id="inboxSub">Loading messages…</p>
       <div class="card" id="inboxMessages"></div>
-      <div class="note"><b>How this works.</b> Connected mailboxes are read over IMAP and replies go out over SMTP, straight from this app. Manage credentials under <a href="#" data-goto="integrations">Integrations</a>.</div>
-      <div class="card" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn">Create ticket from this email</button>
-        <button class="btn ghost">Log to contact timeline</button>
-        <button class="btn ghost">Save attachments to client folder</button>
-      </div>
+      <div class="note"><b>How this works.</b> Connected mailboxes are read over IMAP and replies go out over SMTP, straight from this app. Click a message to open it. Manage credentials under <a href="#" data-goto="integrations">Integrations</a>.</div>
     </div>
 
     <!-- ================= CALENDAR ================= -->
@@ -390,19 +394,27 @@
     <!-- ================= TICKETS ================= -->
     <div class="view hidden" id="view-tickets">
       <h1>Service Desk</h1>
-      <p class="sub">Every ticket starts as an email received on clientcare@ or admin@. Press <b>Create ticket</b> and a draft arrives pre-filled from the message.</p>
-      <div style="margin-bottom:12px;"><button class="btn">Create ticket from email</button></div>
+      <p class="sub">Raise a ticket by hand, or open a message in the <a href="#" data-goto="inbox">Inbox</a> and press <b>Create ticket</b> to draft one pre-filled from it.</p>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+        <button type="button" class="btn" id="tkAdd">New ticket</button>
+        <select id="tkFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
+          <option value="open">Open only</option>
+          <option value="">All tickets</option>
+        </select>
+        <span class="msg-snippet" id="tkSummary"></span>
+      </div>
+
+      <div id="tkEditor"></div>
+
       <div class="card">
         <table>
           <thead><tr><th>ID</th><th>Subject</th><th>Client</th><th>Status</th><th>Priority</th><th>SLA</th><th>Source</th></tr></thead>
-          <tbody>
-            <tr><td class="num">TKT-118</td><td>Nightly warehouse refresh failing</td><td>Hatcher &amp; Co.</td><td><span class="pill red">Waiting</span></td><td>High</td><td>tomorrow, 5pm</td><td>Email</td></tr>
-            <tr><td class="num">TKT-121</td><td>Export permissions error</td><td>Marlowe Clinic</td><td><span class="pill amber">In progress</span></td><td>High</td><td>tomorrow, 9am</td><td>Email</td></tr>
-            <tr><td class="num">TKT-119</td><td>Add third analysis workstream</td><td>Ridgeline Dental</td><td><span class="pill grey">New</span></td><td>Medium</td><td>16 Aug</td><td>Email</td></tr>
-          </tbody>
+          <tbody id="tkRows"><tr><td colspan="7" class="msg-snippet">Loading…</td></tr></tbody>
         </table>
       </div>
-      <div class="note">Fields are drafted automatically from the source email (subject, priority, a two-sentence summary) and flagged low-confidence fields are marked for review before the ticket goes live. This is a one-shot drafting step on ticket creation — there is no standing assistant with access to the workspace.</div>
+
+      <div class="note">An SLA due date is mirrored onto the <a href="#" data-goto="calendar">Calendar</a> as a "SLA due" entry, and into the subscription feed. Change the date and the calendar entry moves; resolve the ticket and it disappears.</div>
     </div>
 
     <!-- ================= FILES ================= -->
@@ -740,25 +752,24 @@
     }
   }
 
-  document.getElementById('inboxMessages').addEventListener('click', (e) => {
-    const btn = e.target.closest('.reply-toggle');
-    if (!btn) return;
-    const row = btn.closest('.msg-row');
+  function replyBox(row, prefill){
     let box = row.querySelector('.reply-box');
     if (box) { box.remove(); return; }
     box = document.createElement('div');
     box.className = 'reply-box';
     box.innerHTML = `
-      <textarea placeholder="Write a reply…"></textarea>
+      <textarea placeholder="Write a reply…">${escapeHtml(prefill || '')}</textarea>
       <div class="row">
         <button type="button" class="btn send-reply">Send reply</button>
         <span class="reply-status"></span>
       </div>`;
     row.appendChild(box);
-    box.querySelector('textarea').focus();
+    const ta = box.querySelector('textarea');
+    ta.focus();
+    ta.setSelectionRange(0, 0);
 
     box.querySelector('.send-reply').addEventListener('click', async () => {
-      const comment = box.querySelector('textarea').value.trim();
+      const comment = ta.value.trim();
       const status = box.querySelector('.reply-status');
       if (!comment) { status.textContent = 'Write something first.'; return; }
       status.textContent = 'Sending…';
@@ -784,6 +795,253 @@
         status.textContent = err.message || 'Failed to send — try again.';
       }
     });
+  }
+
+  async function openMessage(row){
+    const existing = row.querySelector('.msg-body');
+    if (existing) { existing.remove(); row.classList.remove('open'); return; }
+
+    const panel = document.createElement('div');
+    panel.className = 'msg-body';
+    panel.innerHTML = '<span class="msg-snippet">Loading message…</span>';
+    row.appendChild(panel);
+    row.classList.add('open');
+
+    let msg;
+    try {
+      const res = await fetch(`/api/inbox/message?account=${encodeURIComponent(row.dataset.account)}&uid=${encodeURIComponent(row.dataset.id)}`);
+      msg = await res.json();
+      if (!res.ok) throw new Error(msg.error || 'Could not open that message.');
+    } catch (err) {
+      panel.innerHTML = `<span class="msg-snippet" style="color:var(--red);">${escapeHtml(err.message)}</span>`;
+      return;
+    }
+
+    const hasHtml = !!msg.html;
+    panel.innerHTML = `
+      <div class="msg-toolbar">
+        <button type="button" data-act="reply">Reply</button>
+        <button type="button" data-act="ticket">Create ticket</button>
+        ${msg.client
+          ? `<button type="button" data-act="viewclient">Client: ${escapeHtml(msg.client.name)}</button>`
+          : '<button type="button" data-act="addclient">Add as client</button>'}
+        <button type="button" data-act="unread">Mark unread</button>
+        <button type="button" data-act="delete" style="color:var(--red);">Delete</button>
+        ${hasHtml ? '<button type="button" class="body-toggle" data-act="toggle">View plain text</button>' : ''}
+      </div>
+      <div class="msg-meta" style="margin-bottom:8px;">
+        From ${escapeHtml(msg.fromAddress)}${msg.to.length ? ' · to ' + escapeHtml(msg.to.join(', ')) : ''}
+        ${msg.date ? ' · ' + new Date(msg.date).toLocaleString() : ''}
+      </div>
+      <div class="msg-content"></div>
+      ${msg.attachments.length ? `<div class="msg-attach">${msg.attachments.length} attachment(s): ${msg.attachments.map(a => escapeHtml(a.filename)).join(', ')} — download isn't wired up yet.</div>` : ''}
+    `;
+
+    const content = panel.querySelector('.msg-content');
+    let showingHtml = hasHtml;
+    const renderBody = () => {
+      if (showingHtml) {
+        // Sandboxed: remote HTML mail can carry scripts and trackers, so
+        // it renders isolated with no script execution and no same-origin
+        // access back into the app.
+        const frame = document.createElement('iframe');
+        frame.setAttribute('sandbox', '');
+        frame.srcdoc = msg.html;
+        content.innerHTML = '';
+        content.appendChild(frame);
+      } else {
+        content.innerHTML = `<pre>${escapeHtml(msg.text || '(no plain-text body)')}</pre>`;
+      }
+    };
+    renderBody();
+
+    // Opening a message marks it read, matching every other mail client.
+    if (!msg.isRead) {
+      fetch('/api/inbox/read', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: msg.account, uid: msg.id, read: true }),
+      }).then(() => {
+        const pill = row.querySelector('.pill');
+        if (pill) { pill.className = 'pill grey'; pill.textContent = 'read'; }
+      }).catch(() => {});
+    }
+
+    panel.querySelector('.msg-toolbar').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const act = btn.dataset.act;
+
+      if (act === 'toggle') {
+        showingHtml = !showingHtml;
+        btn.textContent = showingHtml ? 'View plain text' : 'View original HTML';
+        renderBody();
+      } else if (act === 'reply') {
+        const quoted = `\n\n---\nOn ${msg.date ? new Date(msg.date).toLocaleString() : 'an earlier date'}, ${msg.from} wrote:\n`
+          + (msg.text || '').split('\n').slice(0, 20).map(l => `> ${l}`).join('\n');
+        replyBox(row, quoted);
+      } else if (act === 'unread') {
+        await fetch('/api/inbox/read', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account: msg.account, uid: msg.id, read: false }),
+        });
+        const pill = row.querySelector('.pill');
+        if (pill) { pill.className = 'pill red'; pill.textContent = 'unread'; }
+      } else if (act === 'delete') {
+        if (!confirm('Delete this message? It moves to Trash on the mail server.')) return;
+        btn.disabled = true;
+        try {
+          const res = await fetch('/api/inbox/delete', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account: msg.account, uid: msg.id }),
+          });
+          if (!res.ok) throw new Error('failed');
+          row.remove();
+        } catch (err) {
+          btn.disabled = false;
+          alert('Could not delete that message.');
+        }
+      } else if (act === 'addclient') {
+        openAddClientFromEmail(panel, msg);
+      } else if (act === 'viewclient') {
+        goto('crm');
+      } else if (act === 'ticket') {
+        openTicketFromEmail(panel, msg);
+      }
+    });
+  }
+
+  function openAddClientFromEmail(panel, msg){
+    if (panel.querySelector('.inline-form')) return;
+    const domain = (msg.fromAddress.split('@')[1] || '').split('.')[0];
+    const guess = domain ? domain.charAt(0).toUpperCase() + domain.slice(1) : '';
+    const form = document.createElement('div');
+    form.className = 'connect-form inline-form';
+    form.innerHTML = `
+      <label>Client / company name</label>
+      <input type="text" class="ac-client" value="${escapeHtml(guess)}" placeholder="Company name">
+      <label>Contact name</label>
+      <input type="text" class="ac-contact" value="${escapeHtml(msg.from)}">
+      <label>Email</label>
+      <input type="text" class="ac-email" value="${escapeHtml(msg.fromAddress)}" readonly>
+      <div class="row" style="margin-top:10px;">
+        <button type="button" class="btn ac-save">Add client</button>
+        <button type="button" class="btn ghost ac-cancel">Cancel</button>
+        <span class="reply-status ac-status"></span>
+      </div>`;
+    panel.appendChild(form);
+    form.querySelector('.ac-client').focus();
+    form.querySelector('.ac-cancel').addEventListener('click', () => form.remove());
+    form.querySelector('.ac-save').addEventListener('click', async () => {
+      const status = form.querySelector('.ac-status');
+      const clientName = form.querySelector('.ac-client').value.trim();
+      if (!clientName) { status.textContent = 'Give the client a name.'; return; }
+      status.textContent = 'Adding…';
+      try {
+        const res = await fetch('/api/inbox/to-client', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientName,
+            contactName: form.querySelector('.ac-contact').value.trim(),
+            email: msg.fromAddress,
+          }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Could not add.');
+        form.remove();
+        showBanner(`Added ${clientName} to the CRM.`, 'ok');
+        loadCrm();
+        loadInbox();
+      } catch (err) {
+        status.textContent = err.message;
+      }
+    });
+  }
+
+  function openTicketFromEmail(panel, msg){
+    if (panel.querySelector('.inline-form')) return;
+    const form = document.createElement('div');
+    form.className = 'connect-form inline-form';
+    const tomorrow = new Date(Date.now() + 86400000);
+    const pad = n => String(n).padStart(2,'0');
+    const defaultSla = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth()+1)}-${pad(tomorrow.getDate())}T17:00`;
+
+    form.innerHTML = `
+      <label>Subject</label>
+      <input type="text" class="tk-subject" value="${escapeHtml(msg.subject)}">
+      <div class="cols" style="display:flex;gap:10px;">
+        <div style="flex:1;">
+          <label>Priority</label>
+          <select class="tk-priority" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--panel);color:var(--ink);">
+            <option value="low">Low</option>
+            <option value="normal" selected>Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+        <div style="flex:1;">
+          <label>SLA due</label>
+          <input type="datetime-local" class="tk-sla" value="${defaultSla}">
+        </div>
+      </div>
+      <label>Details (from the email)</label>
+      <textarea class="tk-body" style="min-height:110px;">${escapeHtml((msg.text || '').slice(0, 4000))}</textarea>
+      <p class="msg-snippet" style="margin-top:6px;">
+        ${msg.client
+          ? `Will be linked to <b>${escapeHtml(msg.client.name)}</b>.`
+          : 'Sender isn\'t a known client — add them first if you want this ticket linked.'}
+        The SLA date appears on your calendar.
+      </p>
+      <div class="row" style="margin-top:10px;">
+        <button type="button" class="btn tk-save">Create ticket</button>
+        <button type="button" class="btn ghost tk-cancel">Cancel</button>
+        <span class="reply-status tk-status"></span>
+      </div>`;
+    panel.appendChild(form);
+    form.querySelector('.tk-subject').focus();
+    form.querySelector('.tk-cancel').addEventListener('click', () => form.remove());
+
+    form.querySelector('.tk-save').addEventListener('click', async () => {
+      const status = form.querySelector('.tk-status');
+      const subject = form.querySelector('.tk-subject').value.trim();
+      if (!subject) { status.textContent = 'Give it a subject.'; return; }
+      const slaRaw = form.querySelector('.tk-sla').value;
+      status.textContent = 'Creating…';
+      try {
+        const res = await fetch('/api/tickets', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subject,
+            body: form.querySelector('.tk-body').value,
+            priority: form.querySelector('.tk-priority').value,
+            slaDueAt: slaRaw ? new Date(slaRaw).toISOString() : null,
+            clientId: msg.client?.id || null,
+            contactEmail: msg.fromAddress,
+            source: 'email',
+            sourceAccount: msg.account,
+            sourceUid: msg.id,
+          }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Could not create.');
+        form.remove();
+        showBanner(`Created ${d.reference} from this email.`, 'ok');
+        loadTickets();
+        loadCalendar();
+      } catch (err) {
+        status.textContent = err.message;
+      }
+    });
+  }
+
+  document.getElementById('inboxMessages').addEventListener('click', (e) => {
+    const replyBtn = e.target.closest('.reply-toggle');
+    if (replyBtn) { replyBox(replyBtn.closest('.msg-row')); return; }
+
+    // Ignore clicks inside an already-open panel so its own controls work.
+    if (e.target.closest('.msg-body') || e.target.closest('.reply-box')) return;
+
+    const row = e.target.closest('.msg-row');
+    if (row && row.dataset.id) openMessage(row);
   });
 
   let mailDefaults = {};
@@ -900,6 +1158,166 @@
       alert('Failed to disconnect — try again.');
     }
   });
+
+  // --- Service desk ---
+  let tkData = { statuses: [], priorities: [], tickets: [], stats: {} };
+
+  function tkMeta(list, key){
+    return list.find(x => x.key === key) || { label: key, tone: 'grey' };
+  }
+
+  function slaLabel(iso){
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d)) return '—';
+    const hours = (d.getTime() - Date.now()) / 3600000;
+    const time = d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+    if (hours < 0) return `<span style="color:var(--red);">overdue · ${escapeHtml(time)}</span>`;
+    if (hours < 24) return `<span style="color:var(--amber);">${escapeHtml(time)}</span>`;
+    return escapeHtml(time);
+  }
+
+  async function loadTickets(){
+    const openOnly = document.getElementById('tkFilter').value === 'open';
+    try {
+      tkData = await (await fetch(`/api/tickets${openOnly ? '?open=1' : ''}`)).json();
+    } catch (err) {
+      document.getElementById('tkRows').innerHTML = '<tr><td colspan="7" class="msg-snippet">Could not load tickets.</td></tr>';
+      return;
+    }
+    renderTickets();
+  }
+
+  function renderTickets(){
+    const rows = document.getElementById('tkRows');
+    document.getElementById('tkSummary').textContent =
+      `${tkData.stats.open ?? 0} open · ${tkData.stats.due_soon ?? 0} due within 24h`;
+
+    if (!tkData.tickets.length) {
+      rows.innerHTML = '<tr><td colspan="7" class="msg-snippet">No tickets.</td></tr>';
+      return;
+    }
+
+    rows.innerHTML = tkData.tickets.map(t => {
+      const st = tkMeta(tkData.statuses, t.status);
+      const pr = tkMeta(tkData.priorities, t.priority);
+      return `
+        <tr data-id="${t.id}" style="cursor:pointer;">
+          <td class="num">${escapeHtml(t.reference)}</td>
+          <td>${escapeHtml(t.subject)}</td>
+          <td>${escapeHtml(t.clientName || '—')}</td>
+          <td><span class="pill ${st.tone}">${escapeHtml(st.label)}</span></td>
+          <td><span class="pill ${pr.tone}">${escapeHtml(pr.label)}</span></td>
+          <td>${slaLabel(t.slaDueAt)}</td>
+          <td>${t.source === 'email' ? 'Email' : 'Manual'}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('tkFilter').addEventListener('change', loadTickets);
+  document.getElementById('tkAdd').addEventListener('click', () => openTicketEditor(null));
+  document.getElementById('tkRows').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]');
+    if (!tr) return;
+    openTicketEditor(tkData.tickets.find(t => t.id === Number(tr.dataset.id)));
+  });
+
+  function openTicketEditor(ticket){
+    const isEdit = !!ticket;
+    const wrap = document.getElementById('tkEditor');
+    const pad = n => String(n).padStart(2,'0');
+    const toLocal = (iso) => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+
+    wrap.innerHTML = `
+      <div class="cal-editor">
+        ${isEdit ? `<div class="msg-meta">${escapeHtml(ticket.reference)}${ticket.source === 'email' ? ' · from email' : ''}${ticket.contactEmail ? ' · ' + escapeHtml(ticket.contactEmail) : ''}</div>` : ''}
+        <label>Subject</label>
+        <input type="text" id="tkSubject" value="${escapeHtml(ticket?.subject || '')}" placeholder="What's wrong?">
+        <div class="cols">
+          <div>
+            <label>Status</label>
+            <select id="tkStatus" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);">
+              ${tkData.statuses.map(s => `<option value="${s.key}" ${ticket?.status === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label>Priority</label>
+            <select id="tkPriority" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);">
+              ${tkData.priorities.map(p => `<option value="${p.key}" ${ticket?.priority === p.key ? 'selected' : ''}>${escapeHtml(p.label)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="cols">
+          <div>
+            <label>Client</label>
+            <select id="tkClient" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);">
+              <option value="">— none —</option>
+              ${crmData.clients.map(c => `<option value="${c.id}" ${ticket?.clientId === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label>SLA due</label>
+            <input type="datetime-local" id="tkSla" value="${toLocal(ticket?.slaDueAt)}">
+          </div>
+        </div>
+        <label>Details</label>
+        <textarea id="tkBody" style="min-height:120px;">${escapeHtml(ticket?.body || '')}</textarea>
+        <div class="actions">
+          <button type="button" class="btn" id="tkSave">${isEdit ? 'Save changes' : 'Create ticket'}</button>
+          <button type="button" class="btn ghost" id="tkCancel">Cancel</button>
+          ${isEdit ? '<button type="button" class="btn ghost" id="tkDelete" style="color:var(--red);">Delete</button>' : ''}
+          <span class="reply-status" id="tkStatusMsg"></span>
+        </div>
+      </div>`;
+
+    document.getElementById('tkSubject').focus();
+    document.getElementById('tkCancel').addEventListener('click', () => { wrap.innerHTML = ''; });
+
+    document.getElementById('tkSave').addEventListener('click', async () => {
+      const status = document.getElementById('tkStatusMsg');
+      const subject = document.getElementById('tkSubject').value.trim();
+      if (!subject) { status.textContent = 'Give it a subject.'; return; }
+      const slaRaw = document.getElementById('tkSla').value;
+      const clientRaw = document.getElementById('tkClient').value;
+
+      status.textContent = 'Saving…';
+      try {
+        const res = await fetch(isEdit ? `/api/tickets/${ticket.id}` : '/api/tickets', {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subject,
+            body: document.getElementById('tkBody').value,
+            status: document.getElementById('tkStatus').value,
+            priority: document.getElementById('tkPriority').value,
+            clientId: clientRaw ? Number(clientRaw) : null,
+            slaDueAt: slaRaw ? new Date(slaRaw).toISOString() : null,
+          }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Could not save.');
+        wrap.innerHTML = '';
+        loadTickets();
+        loadCalendar();
+      } catch (err) {
+        status.textContent = err.message;
+      }
+    });
+
+    if (isEdit) {
+      document.getElementById('tkDelete').addEventListener('click', async () => {
+        if (!confirm(`Delete ${ticket.reference}? Its calendar entry goes too.`)) return;
+        await fetch(`/api/tickets/${ticket.id}`, { method: 'DELETE' });
+        wrap.innerHTML = '';
+        loadTickets();
+        loadCalendar();
+      });
+    }
+  }
 
   // --- CRM ---
   let crmData = { stages: [], clients: [] };
@@ -1795,7 +2213,8 @@
     loadCalendly();
     loadGoogle();
     loadScheduling();
-    loadCrm();
+    // CRM before tickets: the ticket editor's client dropdown reads from it.
+    loadCrm().then(loadTickets);
 
     const params = new URLSearchParams(location.search);
     if (params.get('googleConnected')) {
