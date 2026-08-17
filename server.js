@@ -146,6 +146,18 @@ app.get('/auth/microsoft/callback', async (req, res) => {
       code: req.query.code,
       redirectUri: redirectUriFor(req),
     });
+
+    // Graph reads mail via /me — whichever account actually signed in.
+    // Without this check, signing in as a different account than the one
+    // clicked would silently store that account's token under the wrong
+    // label, and the inbox would show the wrong mailbox's mail.
+    const me = await msgraph.getSignedInUser(tokens.access_token);
+    const signedInAs = (me.mail || me.userPrincipalName || '').toLowerCase();
+    if (signedInAs !== pending.account.toLowerCase()) {
+      console.warn(`OAuth account mismatch: clicked ${pending.account}, signed in as ${signedInAs || 'unknown'}`);
+      return res.redirect(`/?mailError=${encodeURIComponent(`wrong_account:${signedInAs || 'unknown'}`)}`);
+    }
+
     await msgraph.saveTokens(pending.account, tokens);
     res.redirect(`/?connected=${encodeURIComponent(pending.account)}`);
   } catch (err) {
@@ -173,25 +185,34 @@ app.get('/api/inbox', async (req, res) => {
     const accounts = (await msgraph.listConnectedAccounts())
       .filter((a) => configuredMailboxes().includes(a));
 
+    // Per-account isolation: one mailbox failing (expired grant, revoked
+    // consent) shouldn't blank out the others.
+    const errors = [];
     const perAccount = await Promise.all(accounts.map(async (account) => {
-      const accessToken = await msgraph.getValidAccessToken(account);
-      if (!accessToken) return [];
-      const messages = await msgraph.listMessages(accessToken, { top: 25 });
-      return messages.map((m) => ({
-        id: m.id,
-        account,
-        subject: m.subject,
-        from: m.from?.emailAddress?.name || m.from?.emailAddress?.address || 'Unknown sender',
-        receivedDateTime: m.receivedDateTime,
-        preview: m.bodyPreview,
-        isRead: m.isRead,
-        webLink: m.webLink,
-      }));
+      try {
+        const accessToken = await msgraph.getValidAccessToken(account);
+        if (!accessToken) return [];
+        const messages = await msgraph.listMessages(accessToken, { top: 25 });
+        return messages.map((m) => ({
+          id: m.id,
+          account,
+          subject: m.subject,
+          from: m.from?.emailAddress?.name || m.from?.emailAddress?.address || 'Unknown sender',
+          receivedDateTime: m.receivedDateTime,
+          preview: m.bodyPreview,
+          isRead: m.isRead,
+          webLink: m.webLink,
+        }));
+      } catch (err) {
+        console.error(`Failed to load mail for ${account}:`, err);
+        errors.push({ account, message: err.message });
+        return [];
+      }
     }));
 
     const messages = perAccount.flat().sort((a, b) =>
       new Date(b.receivedDateTime) - new Date(a.receivedDateTime));
-    res.json({ accounts, messages });
+    res.json({ accounts, messages, errors });
   } catch (err) {
     console.error('Failed to load inbox:', err);
     res.status(502).json({ error: 'Failed to load mail from Microsoft Graph.' });

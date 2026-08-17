@@ -616,9 +616,11 @@
         return;
       }
       sub.textContent = `${data.messages.length} messages across ${data.accounts.length} connected inbox${data.accounts.length === 1 ? '' : 'es'}`;
-      wrap.innerHTML = data.messages.length
+      const errorHtml = (data.errors || []).map(e =>
+        `<div class="msg-row"><span class="msg-snippet" style="color:var(--red);">${escapeHtml(e.account)}: ${escapeHtml(e.message)}</span></div>`).join('');
+      wrap.innerHTML = errorHtml + (data.messages.length
         ? data.messages.map(renderMessage).join('')
-        : '<div class="msg-row"><span class="msg-snippet">No messages found.</span></div>';
+        : (errorHtml ? '' : '<div class="msg-row"><span class="msg-snippet">No messages found.</span></div>'));
     } catch (err) {
       sub.textContent = 'Could not load mail right now.';
       wrap.innerHTML = '';
@@ -712,7 +714,13 @@
   (function initMail(){
     const params = new URLSearchParams(location.search);
     if (params.get('connected')) showBanner(`Connected ${params.get('connected')}.`, 'ok');
-    if (params.get('mailError')) showBanner(`Couldn't connect that mailbox (${params.get('mailError')}).`, 'error');
+    const mailError = params.get('mailError');
+    if (mailError && mailError.startsWith('wrong_account:')) {
+      const signedInAs = mailError.slice('wrong_account:'.length);
+      showBanner(`You signed in as ${signedInAs}, which isn't the mailbox you clicked Connect on. Nothing was saved — sign out of Microsoft (or use a private window) and try again with the right account.`, 'error');
+    } else if (mailError) {
+      showBanner(`Couldn't connect that mailbox (${mailError}).`, 'error');
+    }
     if (params.get('connected') || params.get('mailError')) {
       history.replaceState({}, '', location.pathname);
     }
