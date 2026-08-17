@@ -13,6 +13,7 @@ const { migrate } = require('./lib/migrate');
 const mail = require('./lib/mail');
 const calendar = require('./lib/calendar');
 const calendly = require('./lib/calendly');
+const google = require('./lib/google');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -242,7 +243,24 @@ app.post('/api/calendar/events', express.json(), async (req, res) => {
     return res.status(400).json({ error: 'startsAt is not a valid date.' });
   }
   try {
-    res.status(201).json(await calendar.createEvent(req.body));
+    const created = await calendar.createEvent(req.body);
+
+    // Mirror into Google so Calendly sees the slot as busy. A failure
+    // here must not lose the event — report it so the UI can warn that
+    // the slot isn't protected yet.
+    let mirrorWarning = null;
+    try {
+      const googleId = await google.pushEvent(created);
+      if (googleId) {
+        await calendar.setGoogleEventId(created.id, googleId);
+        created.googleEventId = googleId;
+      }
+    } catch (err) {
+      console.error('Google mirror failed for new event:', err);
+      mirrorWarning = err.message;
+    }
+
+    res.status(201).json({ ...created, mirrorWarning });
   } catch (err) {
     console.error('Failed to create event:', err);
     res.status(500).json({ error: 'Could not create the event.' });
@@ -258,7 +276,20 @@ app.patch('/api/calendar/events/:id', express.json(), async (req, res) => {
     }
     const updated = await calendar.updateEvent(Number(req.params.id), req.body || {});
     if (!updated) return res.status(404).json({ error: 'Event not found.' });
-    res.json(updated);
+
+    let mirrorWarning = null;
+    try {
+      const googleId = await google.pushEvent(updated);
+      if (googleId && googleId !== updated.googleEventId) {
+        await calendar.setGoogleEventId(updated.id, googleId);
+        updated.googleEventId = googleId;
+      }
+    } catch (err) {
+      console.error('Google mirror failed for updated event:', err);
+      mirrorWarning = err.message;
+    }
+
+    res.json({ ...updated, mirrorWarning });
   } catch (err) {
     console.error('Failed to update event:', err);
     res.status(500).json({ error: 'Could not update the event.' });
@@ -274,11 +305,110 @@ app.delete('/api/calendar/events/:id', async (req, res) => {
     }
     const removed = await calendar.deleteEvent(Number(req.params.id));
     if (!removed) return res.status(404).json({ error: 'Event not found.' });
+
+    // Remove the Google mirror too, otherwise the slot stays blocked in
+    // Calendly after you've freed it here.
+    try {
+      await google.deleteEvent(removed.googleEventId);
+    } catch (err) {
+      console.error('Failed to remove Google mirror:', err);
+    }
+
     res.status(204).end();
   } catch (err) {
     console.error('Failed to delete event:', err);
     res.status(500).json({ error: 'Could not delete the event.' });
   }
+});
+
+// --- Google Calendar bridge ---
+// Exists so Calendly can see this app's events: Calendly checks the
+// calendars it's connected to, and can't read our .ics feed.
+
+function googleRedirectUri(req) {
+  return `${req.protocol}://${req.get('host')}/auth/google/callback`;
+}
+
+app.get('/auth/google/start', (req, res) => {
+  if (!google.isConfigured()) {
+    return res.status(400).send('GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set.');
+  }
+  const state = crypto.randomBytes(16).toString('hex');
+  req.session.googleOAuthState = state;
+  res.redirect(google.buildAuthUrl({ redirectUri: googleRedirectUri(req), state }));
+});
+
+app.get('/auth/google/callback', async (req, res) => {
+  const expected = req.session.googleOAuthState;
+  delete req.session.googleOAuthState;
+
+  if (req.query.error) {
+    return res.redirect(`/?googleError=${encodeURIComponent(req.query.error)}`);
+  }
+  if (!expected || req.query.state !== expected) {
+    return res.redirect('/?googleError=invalid_state');
+  }
+
+  try {
+    const tokens = await google.exchangeCodeForToken({
+      code: req.query.code,
+      redirectUri: googleRedirectUri(req),
+    });
+    if (!tokens.refresh_token) {
+      // Without a refresh token the bridge dies within the hour, which
+      // would silently stop protecting slots. Better to fail loudly.
+      return res.redirect('/?googleError=no_refresh_token');
+    }
+    await google.saveTokens(tokens);
+    const result = await google.backfill();
+    res.redirect(`/?googleConnected=1&pushed=${result.pushed || 0}`);
+  } catch (err) {
+    console.error('Google OAuth callback failed:', err);
+    res.redirect(`/?googleError=${encodeURIComponent(err.message)}`);
+  }
+});
+
+app.get('/api/google/status', async (req, res) => {
+  if (!google.isConfigured()) return res.json({ configured: false, connected: false });
+  if (!(await google.isConnected())) return res.json({ configured: true, connected: false });
+  try {
+    const [account, calendars, target] = await Promise.all([
+      google.getAccountEmail(),
+      google.listCalendars(),
+      google.getTargetCalendarId(),
+    ]);
+    res.json({ configured: true, connected: true, account, calendars, target });
+  } catch (err) {
+    res.json({ configured: true, connected: true, error: err.message });
+  }
+});
+
+app.post('/api/google/calendar', express.json(), async (req, res) => {
+  const { calendarId } = req.body || {};
+  if (!calendarId) return res.status(400).json({ error: 'calendarId is required.' });
+  await google.setTargetCalendarId(calendarId);
+  // Events already mirrored point at the old calendar; clear and re-push
+  // so the new target is the one Calendly actually sees.
+  await pool.query(`UPDATE calendar_events SET google_event_id = NULL WHERE source = 'manual'`);
+  try {
+    res.json(await google.backfill());
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post('/api/google/sync', async (req, res) => {
+  try {
+    res.json(await google.backfill());
+  } catch (err) {
+    console.error('Google backfill failed:', err);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post('/api/google/disconnect', async (req, res) => {
+  await google.disconnect();
+  res.status(204).end();
 });
 
 // --- Calendly ---

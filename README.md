@@ -113,19 +113,66 @@ token from calendly.com → Integrations → API & Webhooks, or set
 entirely (the env var wins if both are present). The app polls every
 `CALENDLY_POLL_MINUTES` minutes (default 5); **Sync now** forces one.
 
-**This sync is one-way, and that has a real consequence.** Calendly only
-checks availability against calendars it is itself connected to — Google,
-Outlook/Office 365, iCloud, Exchange — and cannot subscribe to an `.ics`
-feed. So an event you create in this app does **not** block a Calendly
-slot, and someone can book over it. Calendly owns its bookings; this app
-mirrors them and owns everything else. Bear that in mind before relying
-on an event here to protect your time.
+**Calendly's availability API is read-only** (`/user_availability_schedules`,
+`/user_busy_times`, `/event_type_available_times` are all GET), so there
+is no way to push a blocked slot into Calendly directly. Preventing
+double-bookings instead goes through Google Calendar — see below.
 
 Synced events are read-only in this app: the API rejects edits and
 deletes on them with a 409, and the UI shows them in a read-only panel,
 because the next sync would overwrite any local change. Reschedule or
 cancel in Calendly instead. Disconnecting removes the stored token and
 every synced booking; nothing changes in Calendly itself.
+
+## Google Calendar (double-booking prevention)
+
+This integration exists for exactly one reason: **to stop Calendly
+booking over time you've blocked here.**
+
+Calendly decides availability by reading the calendars it is connected to
+(Google, Outlook/Office 365, iCloud, Exchange). It cannot read this app,
+and it cannot subscribe to an `.ics` feed. So the chain is:
+
+```
+event created here → mirrored into Google Calendar → Calendly reads Google → slot unavailable
+```
+
+Setup:
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → new project.
+2. **APIs & Services → Library** → enable **Google Calendar API**.
+3. **OAuth consent screen** → External; add your own address as a test user.
+4. **Credentials → Create Credentials → OAuth client ID** → Web
+   application → authorized redirect URI
+   `https://<your-domain>/auth/google/callback`.
+5. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in Railway.
+6. **Integrations → Google Calendar → Connect**, then pick which calendar
+   to write to.
+7. **In Calendly, make sure that same calendar is one it checks for
+   conflicts.** Miss this step and everything above is inert.
+
+Scopes requested are `calendar.events` (create/update/delete events) and
+`calendar.readonly` (list your calendars so you can choose one) — not
+full calendar admin.
+
+Details worth knowing:
+
+- **Only `manual` events are mirrored.** Calendly bookings are skipped on
+  purpose: Calendly already writes those into the connected Google
+  calendar itself, so mirroring them would double them up.
+- **A failed mirror is surfaced, not swallowed.** If the push to Google
+  fails, the event still saves here and the UI warns that the slot isn't
+  protected — silently failing would defeat the point.
+- **Deletes propagate.** Removing an event here removes its Google
+  mirror, so freeing time here actually frees it in Calendly.
+- **The OAuth flow demands a refresh token** (`access_type=offline`,
+  `prompt=consent`). If Google returns none — which happens when the app
+  was already authorised previously — the connection is refused with an
+  explanation rather than accepted and left to die at the first token
+  expiry.
+- Changing the target calendar re-pushes events to the new one.
+- Disconnecting leaves already-mirrored events in Google; delete them
+  there if you want them gone.
 
 ## Security — done so far, and what's still on you
 
@@ -172,6 +219,7 @@ lib/crypto.js           AES-256-GCM helpers for encrypting credentials at rest
 lib/mail.js             IMAP reading + SMTP sending
 lib/calendar.js         calendar events + .ics feed generation
 lib/calendly.js         Calendly API client + booking sync
+lib/google.js           Google Calendar bridge (mirrors events so Calendly sees them)
 package.json
 .env.example          placeholders for the secrets you'll need
 ```

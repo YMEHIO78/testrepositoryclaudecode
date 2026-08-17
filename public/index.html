@@ -451,6 +451,12 @@
       </div>
 
       <div class="card" style="margin-bottom:14px;">
+        <h3 style="margin-bottom:2px;">Google Calendar</h3>
+        <p class="msg-snippet" style="margin-bottom:12px;">Mirrors events created here into a Google calendar, so Calendly sees those slots as busy and won't book over them. Calendly can't read this app directly — this is the bridge that makes blocking work.</p>
+        <div id="intGoogle"><div class="int-row"><span class="msg-snippet">Loading…</span></div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
         <h3 style="margin-bottom:2px;">Calendly</h3>
         <p class="msg-snippet" style="margin-bottom:12px;">Pulls your scheduled bookings onto the calendar and into the subscription feed. One-way — Calendly can't see events created here, so it won't avoid double-booking against them.</p>
         <div id="intCalendly"><div class="int-row"><span class="msg-snippet">Loading…</span></div></div>
@@ -854,6 +860,86 @@
     }
   });
 
+  // --- Google Calendar bridge ---
+  async function loadGoogle(){
+    const wrap = document.getElementById('intGoogle');
+    try {
+      const s = await (await fetch('/api/google/status')).json();
+
+      if (!s.configured) {
+        wrap.innerHTML = '<div class="int-row"><span class="msg-snippet">Not set up — add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Railway, then reload.</span></div>';
+        return;
+      }
+      if (!s.connected) {
+        wrap.innerHTML = `
+          <div class="int-row">
+            <span>Not connected</span>
+            <a class="int-btn disconnected" style="text-decoration:none;" href="/auth/google/start">Connect</a>
+          </div>`;
+        return;
+      }
+
+      const options = (s.calendars || []).map(c =>
+        `<option value="${escapeHtml(c.id)}" ${c.id === s.target ? 'selected' : ''}>${escapeHtml(c.summary)}${c.primary ? ' (primary)' : ''}</option>`).join('');
+
+      wrap.innerHTML = `
+        <div class="int-row">
+          <span>${escapeHtml(s.account || 'Connected')}</span>
+          <span style="display:flex;gap:6px;">
+            <button type="button" class="int-btn disconnected" id="gSync">Sync now</button>
+            <button type="button" class="int-btn connected" id="gDisconnect">Connected</button>
+          </span>
+        </div>
+        ${s.error ? `<div class="int-row"><span class="msg-snippet" style="color:var(--red);">${escapeHtml(s.error)}</span></div>` : ''}
+        ${options ? `
+        <div class="int-row">
+          <span class="msg-snippet">Write events to</span>
+          <select id="gCalendar" style="padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);">${options}</select>
+        </div>
+        <div class="int-row"><span class="msg-snippet">Make sure Calendly is checking this same calendar for conflicts, or blocking won't take effect.</span></div>` : ''}
+        <div class="int-row"><span class="msg-snippet" id="gStatus"></span></div>`;
+
+      document.getElementById('gSync').addEventListener('click', async () => {
+        const st = document.getElementById('gStatus');
+        st.textContent = 'Pushing events to Google…';
+        try {
+          const r = await fetch('/api/google/sync', { method: 'POST' });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || 'Sync failed.');
+          st.textContent = `${d.pushed} event(s) mirrored`
+            + (d.failures?.length ? `, ${d.failures.length} failed` : '.');
+        } catch (err) {
+          st.textContent = err.message;
+        }
+      });
+
+      document.getElementById('gCalendar')?.addEventListener('change', async (e) => {
+        const st = document.getElementById('gStatus');
+        st.textContent = 'Moving events to the new calendar…';
+        try {
+          const r = await fetch('/api/google/calendar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ calendarId: e.target.value }),
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || 'Could not switch calendar.');
+          st.textContent = `${d.pushed} event(s) mirrored to the new calendar.`;
+        } catch (err) {
+          st.textContent = err.message;
+        }
+      });
+
+      document.getElementById('gDisconnect').addEventListener('click', async () => {
+        if (!confirm('Disconnect Google Calendar? Events already mirrored stay in Google (delete them there if you want them gone), but new events here will stop blocking Calendly slots.')) return;
+        await fetch('/api/google/disconnect', { method: 'POST' });
+        loadGoogle();
+      });
+    } catch (err) {
+      wrap.innerHTML = '<div class="int-row"><span class="msg-snippet">Google status unavailable.</span></div>';
+    }
+  }
+
   // --- Calendly ---
   async function loadCalendly(){
     const wrap = document.getElementById('intCalendly');
@@ -1109,12 +1195,13 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || 'Could not save.');
-        }
+        const saved = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(saved.error || 'Could not save.');
         closeEditor();
         loadCalendar();
+        if (saved.mirrorWarning) {
+          showBanner(`Saved here, but it couldn't be mirrored to Google — Calendly may still book over this slot. ${saved.mirrorWarning}`, 'error');
+        }
       } catch (err) {
         status.textContent = err.message;
       }
@@ -1202,6 +1289,21 @@
     loadCalendar();
     loadFeedUrl();
     loadCalendly();
+    loadGoogle();
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('googleConnected')) {
+      showBanner(`Google Calendar connected — ${params.get('pushed') || 0} existing event(s) mirrored. Check that Calendly is watching this calendar for conflicts.`, 'ok');
+    }
+    const gErr = params.get('googleError');
+    if (gErr === 'no_refresh_token') {
+      showBanner("Google didn't return a refresh token, so the connection wouldn't survive an hour. Remove this app at myaccount.google.com → Security → Third-party access, then connect again.", 'error');
+    } else if (gErr) {
+      showBanner(`Google Calendar connection failed: ${gErr}`, 'error');
+    }
+    if (params.get('googleConnected') || gErr) {
+      history.replaceState({}, '', location.pathname);
+    }
   })();
 </script>
 </body>
