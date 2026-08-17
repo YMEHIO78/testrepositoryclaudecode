@@ -181,6 +181,7 @@
       <button class="nav-btn active" data-view="dash">Dashboard</button>
       <button class="nav-btn" data-view="inbox">Inbox <span class="nav-badge">3</span></button>
       <button class="nav-btn" data-view="calendar">Calendar</button>
+      <button class="nav-btn" data-view="scheduling">Scheduling</button>
     </div>
 
     <div class="nav-group">
@@ -313,6 +314,36 @@
       </div>
 
       <div class="note">Ticket SLA dates and project milestones aren't shown yet — those live in the mockup markup rather than the database. Once Tickets and Projects are real records they can be projected onto this grid and into the feed automatically.</div>
+    </div>
+
+    <!-- ================= SCHEDULING ================= -->
+    <div class="view hidden" id="view-scheduling">
+      <h1>Scheduling</h1>
+      <p class="sub">Share a booking link and let people pick a time. Slots are calculated against this app's calendar, so anything already booked or blocked is never offered.</p>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div class="panel-title"><h3>Meeting types</h3><button type="button" class="btn" id="schAddType">Add type</button></div>
+        <div id="schTypes"><p class="msg-snippet">Loading…</p></div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <h3>Weekly hours</h3>
+        <p class="msg-snippet" style="margin-bottom:10px;">When you're open to being booked. Leave a day blank to be unavailable.</p>
+        <div class="int-row" style="border:none;padding-top:0;">
+          <span class="msg-snippet">Timezone</span>
+          <select id="schTz" style="padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);"></select>
+        </div>
+        <div id="schHours"></div>
+        <div class="row" style="display:flex;gap:8px;align-items:center;margin-top:12px;">
+          <button type="button" class="btn" id="schSaveHours">Save hours</button>
+          <span class="reply-status" id="schHoursStatus"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="panel-title"><h3>Upcoming bookings</h3></div>
+        <div id="schBookings"><p class="msg-snippet">Loading…</p></div>
+      </div>
     </div>
 
     <!-- ================= CRM ================= -->
@@ -860,6 +891,226 @@
     }
   });
 
+  // --- Scheduling ---
+  const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  let schConfig = { eventTypes: [], availability: [], timezone: 'UTC', baseUrl: '' };
+
+  function minutesToTime(m){
+    return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
+  }
+  function timeToMinutes(v){
+    const [h,m] = String(v).split(':').map(Number);
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+  }
+
+  async function loadScheduling(){
+    try {
+      schConfig = await (await fetch('/api/scheduling/config')).json();
+    } catch (err) {
+      document.getElementById('schTypes').innerHTML = '<p class="msg-snippet">Scheduling settings unavailable.</p>';
+      return;
+    }
+    renderTypes();
+    renderHours();
+    loadBookings();
+  }
+
+  function renderTypes(){
+    const wrap = document.getElementById('schTypes');
+    if (!schConfig.eventTypes.length) {
+      wrap.innerHTML = '<p class="msg-snippet">No meeting types yet — add one to start taking bookings.</p>';
+      return;
+    }
+    wrap.innerHTML = schConfig.eventTypes.map(t => {
+      const url = `${schConfig.baseUrl}/book/${t.slug}`;
+      return `
+      <div class="int-row" data-id="${t.id}">
+        <span style="flex:1;">
+          <b>${escapeHtml(t.name)}</b> <span class="msg-snippet">· ${t.durationMinutes} min${t.active ? '' : ' · inactive'}</span><br>
+          <span class="msg-snippet" style="font-family:'IBM Plex Mono',monospace;font-size:11px;">${escapeHtml(url)}</span>
+        </span>
+        <span style="display:flex;gap:6px;">
+          <button type="button" class="int-btn disconnected sch-copy" data-url="${escapeHtml(url)}">Copy link</button>
+          <button type="button" class="int-btn connected sch-edit">Edit</button>
+        </span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderHours(){
+    const tzSel = document.getElementById('schTz');
+    const zones = [...new Set([
+      schConfig.timezone,
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+      'America/New_York','America/Chicago','America/Denver','America/Los_Angeles',
+      'Europe/London','Europe/Paris','Asia/Jerusalem','Asia/Dubai','Australia/Sydney','UTC',
+    ].filter(Boolean))];
+    tzSel.innerHTML = zones.map(z =>
+      `<option value="${escapeHtml(z)}" ${z === schConfig.timezone ? 'selected' : ''}>${escapeHtml(z)}</option>`).join('');
+
+    const byDay = {};
+    for (const w of schConfig.availability) byDay[w.weekday] = w;
+
+    document.getElementById('schHours').innerHTML = WEEKDAYS.map((label, i) => {
+      const w = byDay[i];
+      return `
+      <div class="int-row" data-weekday="${i}">
+        <label class="cal-checkbox" style="flex:1;margin:0;">
+          <input type="checkbox" class="sch-on" ${w ? 'checked' : ''}> ${label}
+        </label>
+        <span style="display:flex;gap:6px;align-items:center;">
+          <input type="time" class="sch-start" value="${minutesToTime(w ? w.startMinute : 540)}"
+                 style="padding:5px 7px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);">
+          <span class="msg-snippet">to</span>
+          <input type="time" class="sch-end" value="${minutesToTime(w ? w.endMinute : 1020)}"
+                 style="padding:5px 7px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);">
+        </span>
+      </div>`;
+    }).join('');
+  }
+
+  async function loadBookings(){
+    const wrap = document.getElementById('schBookings');
+    try {
+      const list = await (await fetch('/api/scheduling/bookings')).json();
+      wrap.innerHTML = list.length
+        ? list.map(b => `
+            <div class="int-row">
+              <span style="flex:1;">
+                <b>${escapeHtml(b.inviteeName)}</b> <span class="msg-snippet">· ${escapeHtml(b.eventTypeName || 'Meeting')}</span><br>
+                <span class="msg-snippet">${escapeHtml(b.inviteeEmail)}${b.notes ? ' · ' + escapeHtml(b.notes) : ''}</span>
+              </span>
+              <span class="msg-snippet">${b.startsAt ? new Date(b.startsAt).toLocaleString() : '—'}</span>
+            </div>`).join('')
+        : '<p class="msg-snippet">No upcoming bookings.</p>';
+    } catch (err) {
+      wrap.innerHTML = '<p class="msg-snippet">Bookings unavailable.</p>';
+    }
+  }
+
+  function openTypeEditor(type){
+    const isEdit = !!type;
+    const wrap = document.getElementById('schTypes');
+    const form = document.createElement('div');
+    form.className = 'connect-form';
+    form.innerHTML = `
+      <label>Name</label>
+      <input type="text" class="t-name" value="${escapeHtml(type?.name || '')}" placeholder="Discovery call">
+      <label>Description</label>
+      <input type="text" class="t-desc" value="${escapeHtml(type?.description || '')}" placeholder="What this meeting is for">
+      <div class="row" style="gap:10px;">
+        <div style="flex:1;"><label>Duration (min)</label><input type="number" class="t-dur" value="${type?.durationMinutes ?? 30}" min="5" step="5"></div>
+        <div style="flex:1;"><label>Buffer after (min)</label><input type="number" class="t-bufa" value="${type?.bufferAfterMinutes ?? 10}" min="0" step="5"></div>
+      </div>
+      <div class="row" style="gap:10px;">
+        <div style="flex:1;"><label>Min notice (min)</label><input type="number" class="t-notice" value="${type?.minNoticeMinutes ?? 240}" min="0" step="30"></div>
+        <div style="flex:1;"><label>Bookable days ahead</label><input type="number" class="t-ahead" value="${type?.maxDaysAhead ?? 60}" min="1"></div>
+      </div>
+      <label>Location</label>
+      <input type="text" class="t-loc" value="${escapeHtml(type?.location || '')}" placeholder="Zoom, phone, address…">
+      <label class="cal-checkbox" style="margin-top:10px;"><input type="checkbox" class="t-active" ${type?.active !== false ? 'checked' : ''}> Accepting bookings</label>
+      <div class="row" style="margin-top:12px;">
+        <button type="button" class="btn t-save">${isEdit ? 'Save' : 'Create'}</button>
+        <button type="button" class="btn ghost t-cancel">Cancel</button>
+        ${isEdit ? '<button type="button" class="btn ghost t-delete" style="color:var(--red);">Delete</button>' : ''}
+        <span class="reply-status t-status"></span>
+      </div>`;
+    wrap.appendChild(form);
+    form.querySelector('.t-name').focus();
+
+    form.querySelector('.t-cancel').addEventListener('click', () => form.remove());
+
+    form.querySelector('.t-save').addEventListener('click', async () => {
+      const status = form.querySelector('.t-status');
+      const payload = {
+        name: form.querySelector('.t-name').value.trim(),
+        description: form.querySelector('.t-desc').value.trim() || null,
+        durationMinutes: Number(form.querySelector('.t-dur').value),
+        bufferAfterMinutes: Number(form.querySelector('.t-bufa').value),
+        minNoticeMinutes: Number(form.querySelector('.t-notice').value),
+        maxDaysAhead: Number(form.querySelector('.t-ahead').value),
+        location: form.querySelector('.t-loc').value.trim() || null,
+        active: form.querySelector('.t-active').checked,
+      };
+      if (!payload.name) { status.textContent = 'Give it a name.'; return; }
+      status.textContent = 'Saving…';
+      try {
+        const res = await fetch(isEdit ? `/api/scheduling/event-types/${type.id}` : '/api/scheduling/event-types', {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Could not save.');
+        form.remove();
+        loadScheduling();
+      } catch (err) {
+        status.textContent = err.message;
+      }
+    });
+
+    if (isEdit) {
+      form.querySelector('.t-delete').addEventListener('click', async () => {
+        if (!confirm(`Delete "${type.name}"? Its booking link will stop working. Existing bookings stay on the calendar.`)) return;
+        await fetch(`/api/scheduling/event-types/${type.id}`, { method: 'DELETE' });
+        form.remove();
+        loadScheduling();
+      });
+    }
+  }
+
+  document.getElementById('schAddType').addEventListener('click', () => openTypeEditor(null));
+
+  document.getElementById('schTypes').addEventListener('click', async (e) => {
+    const copy = e.target.closest('.sch-copy');
+    if (copy) {
+      try { await navigator.clipboard.writeText(copy.dataset.url); } catch (err) { /* clipboard blocked */ }
+      const original = copy.textContent;
+      copy.textContent = 'Copied';
+      setTimeout(() => { copy.textContent = original; }, 1200);
+      return;
+    }
+    const edit = e.target.closest('.sch-edit');
+    if (edit) {
+      const id = Number(edit.closest('.int-row').dataset.id);
+      openTypeEditor(schConfig.eventTypes.find(t => t.id === id));
+    }
+  });
+
+  document.getElementById('schSaveHours').addEventListener('click', async () => {
+    const status = document.getElementById('schHoursStatus');
+    const windows = [...document.querySelectorAll('#schHours .int-row')]
+      .filter(row => row.querySelector('.sch-on').checked)
+      .map(row => ({
+        weekday: Number(row.dataset.weekday),
+        startMinute: timeToMinutes(row.querySelector('.sch-start').value),
+        endMinute: timeToMinutes(row.querySelector('.sch-end').value),
+      }));
+
+    const bad = windows.find(w => w.endMinute <= w.startMinute);
+    if (bad) { status.textContent = `${WEEKDAYS[bad.weekday]} ends before it starts.`; return; }
+
+    status.textContent = 'Saving…';
+    try {
+      const tz = document.getElementById('schTz').value;
+      const tzRes = await fetch('/api/scheduling/timezone', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: tz }),
+      });
+      if (!tzRes.ok) throw new Error((await tzRes.json()).error || 'Bad timezone.');
+
+      const res = await fetch('/api/scheduling/availability', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ windows }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Could not save.');
+      status.textContent = 'Saved.';
+      loadScheduling();
+    } catch (err) {
+      status.textContent = err.message;
+    }
+  });
+
   // --- Google Calendar bridge ---
   async function loadGoogle(){
     const wrap = document.getElementById('intGoogle');
@@ -1290,6 +1541,7 @@
     loadFeedUrl();
     loadCalendly();
     loadGoogle();
+    loadScheduling();
 
     const params = new URLSearchParams(location.search);
     if (params.get('googleConnected')) {

@@ -14,6 +14,7 @@ const mail = require('./lib/mail');
 const calendar = require('./lib/calendar');
 const calendly = require('./lib/calendly');
 const google = require('./lib/google');
+const scheduling = require('./lib/scheduling');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,6 +45,133 @@ app.get('/calendar/:token/pocket-data-office.ics', async (req, res) => {
   } catch (err) {
     console.error('Failed to build calendar feed:', err);
     res.status(500).send('Could not build calendar feed.');
+  }
+});
+
+// Public booking pages and their API — outside the login gate by
+// design, since the people booking are clients, not app users. Slot
+// availability is computed against calendar_events, so anything already
+// on the calendar is never offered.
+app.get('/book/cancel/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'cancel.html'));
+});
+
+app.get('/book/:slug', async (req, res) => {
+  const type = await scheduling.getEventTypeBySlug(req.params.slug);
+  if (!type || !type.active) return res.status(404).send('That booking page was not found.');
+  res.sendFile(path.join(__dirname, 'views', 'book.html'));
+});
+
+app.get('/api/book/:slug/slots', async (req, res) => {
+  try {
+    const type = await scheduling.getEventTypeBySlug(req.params.slug);
+    if (!type || !type.active) return res.status(404).json({ error: 'That booking page was not found.' });
+    const { timezone, slots } = await scheduling.availableSlots(type, {
+      from: req.query.from,
+      to: req.query.to,
+    });
+    res.json({ eventType: type, timezone, slots });
+  } catch (err) {
+    console.error('Failed to compute slots:', err);
+    res.status(500).json({ error: 'Could not load available times.' });
+  }
+});
+
+// Rate-limited: this endpoint is public and writes to the calendar, so
+// it's the obvious target for someone spamming bookings.
+const bookingLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.headers['x-real-ip'] || req.socket.remoteAddress,
+  message: { error: 'Too many booking attempts. Please try again later.' },
+});
+
+app.post('/api/book/:slug', bookingLimiter, express.json(), async (req, res) => {
+  const { startsAt, name, email, notes } = req.body || {};
+  if (!startsAt || !name || !email) {
+    return res.status(400).json({ error: 'Name, email, and a time are required.' });
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return res.status(400).json({ error: 'That email address does not look valid.' });
+  }
+
+  try {
+    const type = await scheduling.getEventTypeBySlug(req.params.slug);
+    if (!type || !type.active) return res.status(404).json({ error: 'That booking page was not found.' });
+
+    const booking = await scheduling.createBooking(type, { startsAt, name, email, notes });
+    const cancelUrl = `${req.protocol}://${req.get('host')}/book/cancel/${booking.cancelToken}`;
+
+    // Confirmation is best-effort: the booking is already committed, and
+    // failing the request would tell the client it didn't work when it did.
+    let emailed = false;
+    try {
+      const tz = await scheduling.getTimezone();
+      const when = new Date(booking.startsAt).toLocaleString('en-US', {
+        timeZone: tz, weekday: 'long', month: 'long', day: 'numeric',
+        hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+      });
+
+      await mail.sendMail({
+        to: email,
+        subject: `Confirmed: ${type.name}`,
+        text: [
+          `Hi ${name},`, '',
+          `Your ${type.name} is confirmed for:`,
+          `  ${when}`,
+          type.location ? `  ${type.location}` : '',
+          '', `Need to cancel? ${cancelUrl}`,
+          '', 'Pocket Data Office',
+        ].filter(Boolean).join('\n'),
+      });
+      emailed = true;
+
+      const owner = (await mail.listAccounts())[0];
+      if (owner) {
+        await mail.sendMail({
+          to: owner,
+          replyTo: email,
+          subject: `New booking: ${type.name} — ${name}`,
+          text: [
+            `${name} <${email}> booked ${type.name}.`, '',
+            `When: ${when}`,
+            notes ? `Notes: ${notes}` : '',
+          ].filter(Boolean).join('\n'),
+        });
+      }
+    } catch (err) {
+      console.error('Booking confirmation email failed:', err.message);
+    }
+
+    res.status(201).json({ startsAt: booking.startsAt, endsAt: booking.endsAt, cancelUrl, emailed });
+  } catch (err) {
+    // Slot-taken is an expected race, not a server fault.
+    const taken = /taken|not available|no longer/i.test(err.message);
+    if (!taken) console.error('Booking failed:', err);
+    res.status(taken ? 409 : 500).json({ error: taken ? err.message : 'Could not complete the booking.' });
+  }
+});
+
+app.get('/api/book/cancel/:token', async (req, res) => {
+  const booking = await scheduling.getBookingByToken(req.params.token);
+  if (!booking) return res.status(404).json({ error: 'Not found.' });
+  res.json({
+    startsAt: booking.startsAt,
+    eventTypeName: booking.eventTypeName,
+    canceledAt: booking.canceledAt,
+  });
+});
+
+app.post('/api/book/cancel/:token', async (req, res) => {
+  try {
+    const booking = await scheduling.cancelBooking(req.params.token);
+    if (!booking) return res.status(404).json({ error: 'Not found.' });
+    res.status(204).end();
+  } catch (err) {
+    console.error('Cancellation failed:', err);
+    res.status(500).json({ error: 'Could not cancel.' });
   }
 });
 
@@ -318,6 +446,86 @@ app.delete('/api/calendar/events/:id', async (req, res) => {
   } catch (err) {
     console.error('Failed to delete event:', err);
     res.status(500).json({ error: 'Could not delete the event.' });
+  }
+});
+
+// --- Scheduling admin ---
+
+app.get('/api/scheduling/config', async (req, res) => {
+  try {
+    const [eventTypes, availability, timezone] = await Promise.all([
+      scheduling.listEventTypes(),
+      scheduling.getAvailability(),
+      scheduling.getTimezone(),
+    ]);
+    res.json({
+      eventTypes,
+      availability,
+      timezone,
+      baseUrl: `${req.protocol}://${req.get('host')}`,
+    });
+  } catch (err) {
+    console.error('Failed to load scheduling config:', err);
+    res.status(500).json({ error: 'Could not load scheduling settings.' });
+  }
+});
+
+app.post('/api/scheduling/event-types', express.json(), async (req, res) => {
+  if (!req.body?.name) return res.status(400).json({ error: 'A name is required.' });
+  try {
+    res.status(201).json(await scheduling.createEventType(req.body));
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'That URL slug is already in use.' });
+    console.error('Failed to create event type:', err);
+    res.status(500).json({ error: 'Could not create that meeting type.' });
+  }
+});
+
+app.patch('/api/scheduling/event-types/:id', express.json(), async (req, res) => {
+  try {
+    const updated = await scheduling.updateEventType(Number(req.params.id), req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Not found.' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Failed to update event type:', err);
+    res.status(500).json({ error: 'Could not update that meeting type.' });
+  }
+});
+
+app.delete('/api/scheduling/event-types/:id', async (req, res) => {
+  const removed = await scheduling.deleteEventType(Number(req.params.id));
+  if (!removed) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
+});
+
+app.put('/api/scheduling/availability', express.json(), async (req, res) => {
+  if (!Array.isArray(req.body?.windows)) {
+    return res.status(400).json({ error: 'windows must be an array.' });
+  }
+  try {
+    await scheduling.setAvailability(req.body.windows);
+    res.json(await scheduling.getAvailability());
+  } catch (err) {
+    console.error('Failed to save availability:', err);
+    res.status(500).json({ error: 'Could not save availability.' });
+  }
+});
+
+app.put('/api/scheduling/timezone', express.json(), async (req, res) => {
+  try {
+    await scheduling.setTimezone(req.body?.timezone);
+    res.json({ timezone: await scheduling.getTimezone() });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/scheduling/bookings', async (req, res) => {
+  try {
+    res.json(await scheduling.listBookings({ upcomingOnly: req.query.all !== '1' }));
+  } catch (err) {
+    console.error('Failed to list bookings:', err);
+    res.status(500).json({ error: 'Could not load bookings.' });
   }
 });
 

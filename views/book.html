@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book a time</title>
+<style>
+  :root{
+    --ink:#1c1a1c; --paper:#f3f1ec; --panel:#ffffff; --line:#e2ddd2;
+    --muted:#8a8683; --brand:#1800ad; --brand-soft:#e9e6fb;
+    --green:#1f7a4d; --green-soft:#e6f4ec; --red:#b23a2f; --red-soft:#fbe9e6;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--paper);color:var(--ink);
+       font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;
+       display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;}
+  .wrap{width:100%;max-width:760px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;}
+  .brand{font-weight:700;letter-spacing:1px;font-size:12px;color:var(--brand);margin-bottom:16px;}
+  h1{font-size:20px;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 4px;}
+  .meta{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12.5px;margin:12px 0 0;}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;}
+  @media (max-width:640px){ .cols{grid-template-columns:1fr;} }
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 8px;font-weight:600;}
+  .days{display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto;}
+  .day-btn,.slot-btn{text-align:left;background:var(--paper);border:1px solid var(--line);border-radius:8px;
+       padding:9px 12px;font-size:13px;font-family:inherit;color:var(--ink);cursor:pointer;}
+  .day-btn:hover,.slot-btn:hover{border-color:var(--brand);color:var(--brand);}
+  .day-btn.active{background:var(--brand);border-color:var(--brand);color:#fff;}
+  .slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;max-height:340px;overflow-y:auto;}
+  .slot-btn{text-align:center;}
+  .slot-btn.active{background:var(--brand);border-color:var(--brand);color:#fff;}
+  label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:12px 0 4px;font-weight:600;}
+  input,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;
+       font-size:14px;font-family:inherit;background:var(--paper);color:var(--ink);}
+  textarea{min-height:70px;resize:vertical;}
+  button.primary{width:100%;margin-top:18px;padding:11px;border:none;border-radius:8px;background:var(--brand);
+       color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
+  button.primary:disabled{opacity:.5;cursor:not-allowed;}
+  .status{margin-top:12px;font-size:12.5px;color:var(--muted);}
+  .status.error{color:var(--red);}
+  .banner{padding:14px;border-radius:8px;background:var(--green-soft);color:var(--green);}
+  .banner.error{background:var(--red-soft);color:var(--red);}
+  .tz{margin-top:14px;font-size:11.5px;color:var(--muted);}
+  .empty{color:var(--muted);font-size:13px;padding:10px 0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card" id="root">
+    <div class="brand">POCKET DATA OFFICE</div>
+    <div id="content"><p class="sub">Loading…</p></div>
+  </div>
+</div>
+
+<script>
+  const SLUG = document.currentScript.dataset.slug || location.pathname.split('/').filter(Boolean).pop();
+  const content = document.getElementById('content');
+  let eventType = null;
+  let slotsByDay = new Map();
+  let selectedDay = null;
+  let selectedSlot = null;
+
+  const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  function esc(s){
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  const dayKey = d => d.toLocaleDateString('en-CA'); // YYYY-MM-DD, local
+  const dayLabel = d => d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+  const timeLabel = d => d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
+
+  async function load(){
+    try {
+      const res = await fetch(`/api/book/${encodeURIComponent(SLUG)}/slots`);
+      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).error || 'Not available.');
+      const data = await res.json();
+      eventType = data.eventType;
+
+      slotsByDay = new Map();
+      for (const iso of data.slots) {
+        const d = new Date(iso);
+        const key = dayKey(d);
+        if (!slotsByDay.has(key)) slotsByDay.set(key, []);
+        slotsByDay.get(key).push(d);
+      }
+      selectedDay = slotsByDay.keys().next().value || null;
+      render();
+    } catch (err) {
+      content.innerHTML = `<div class="banner error">${esc(err.message)}</div>`;
+    }
+  }
+
+  function render(){
+    const days = [...slotsByDay.keys()];
+    content.innerHTML = `
+      <h1>${esc(eventType.name)}</h1>
+      ${eventType.description ? `<p class="sub">${esc(eventType.description)}</p>` : ''}
+      <div class="meta">
+        <span>${eventType.durationMinutes} minutes</span>
+        ${eventType.location ? `<span>${esc(eventType.location)}</span>` : ''}
+      </div>
+      ${days.length ? `
+        <div class="cols">
+          <div>
+            <h2>Pick a day</h2>
+            <div class="days" id="days">
+              ${days.map(k => {
+                const d = new Date(slotsByDay.get(k)[0]);
+                return `<button type="button" class="day-btn ${k===selectedDay?'active':''}" data-day="${k}">${esc(dayLabel(d))}</button>`;
+              }).join('')}
+            </div>
+          </div>
+          <div>
+            <h2>Pick a time</h2>
+            <div class="slots" id="slots"></div>
+          </div>
+        </div>
+        <div id="form"></div>
+        <p class="tz">Times shown in your timezone (${esc(localTz)}).</p>
+      ` : `<p class="empty">No times are available right now. Please check back later.</p>`}
+    `;
+
+    if (!days.length) return;
+
+    document.getElementById('days').addEventListener('click', (e) => {
+      const btn = e.target.closest('.day-btn');
+      if (!btn) return;
+      selectedDay = btn.dataset.day;
+      selectedSlot = null;
+      render();
+    });
+
+    renderSlots();
+  }
+
+  function renderSlots(){
+    const wrap = document.getElementById('slots');
+    const slots = slotsByDay.get(selectedDay) || [];
+    wrap.innerHTML = slots.map(d =>
+      `<button type="button" class="slot-btn ${selectedSlot===d.toISOString()?'active':''}" data-iso="${d.toISOString()}">${esc(timeLabel(d))}</button>`
+    ).join('');
+
+    wrap.addEventListener('click', (e) => {
+      const btn = e.target.closest('.slot-btn');
+      if (!btn) return;
+      selectedSlot = btn.dataset.iso;
+      renderSlots();
+      renderForm();
+    }, { once: true });
+  }
+
+  function renderForm(){
+    if (!selectedSlot) return;
+    const when = new Date(selectedSlot);
+    document.getElementById('form').innerHTML = `
+      <h2 style="margin-top:20px;">Your details</h2>
+      <p class="sub">${esc(dayLabel(when))} at ${esc(timeLabel(when))}</p>
+      <label for="bname">Name</label>
+      <input id="bname" type="text" autocomplete="name" required>
+      <label for="bemail">Email</label>
+      <input id="bemail" type="email" autocomplete="email" required>
+      <label for="bnotes">Anything I should know? (optional)</label>
+      <textarea id="bnotes"></textarea>
+      <button type="button" class="primary" id="bsubmit">Confirm booking</button>
+      <div class="status" id="bstatus"></div>
+    `;
+    document.getElementById('bsubmit').addEventListener('click', submit);
+  }
+
+  async function submit(){
+    const btn = document.getElementById('bsubmit');
+    const status = document.getElementById('bstatus');
+    const name = document.getElementById('bname').value.trim();
+    const email = document.getElementById('bemail').value.trim();
+    const notes = document.getElementById('bnotes').value.trim();
+
+    if (!name || !email) { status.textContent = 'Name and email are required.'; status.className='status error'; return; }
+
+    btn.disabled = true;
+    status.className = 'status';
+    status.textContent = 'Booking…';
+    try {
+      const res = await fetch(`/api/book/${encodeURIComponent(SLUG)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startsAt: selectedSlot, name, email, notes }),
+      });
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.error || 'Could not book that time.');
+
+      const when = new Date(data.startsAt);
+      content.innerHTML = `
+        <div class="banner">
+          <b>You're booked.</b><br>
+          ${esc(eventType.name)} — ${esc(dayLabel(when))} at ${esc(timeLabel(when))}
+          ${data.emailed ? '<br>A confirmation has been sent to ' + esc(email) + '.' : ''}
+        </div>
+        ${data.cancelUrl ? `<p class="tz">Need to cancel? <a href="${esc(data.cancelUrl)}">Use this link</a>.</p>` : ''}
+      `;
+    } catch (err) {
+      btn.disabled = false;
+      status.className = 'status error';
+      status.textContent = err.message;
+      // The slot may have just gone — refresh so they see current times.
+      if (/taken|available/i.test(err.message)) setTimeout(load, 1500);
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>

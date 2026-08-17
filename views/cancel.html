@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cancel booking</title>
+<style>
+  :root{
+    --ink:#1c1a1c; --paper:#f3f1ec; --panel:#ffffff; --line:#e2ddd2;
+    --muted:#8a8683; --brand:#1800ad; --green:#1f7a4d; --green-soft:#e6f4ec;
+    --red:#b23a2f; --red-soft:#fbe9e6; --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--paper);color:var(--ink);
+       font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;
+       display:flex;align-items:center;justify-content:center;padding:24px;}
+  .card{width:100%;max-width:440px;background:var(--panel);border:1px solid var(--line);
+        border-radius:var(--radius);padding:24px;}
+  .brand{font-weight:700;letter-spacing:1px;font-size:12px;color:var(--brand);margin-bottom:16px;}
+  h1{font-size:18px;margin:0 0 8px;}
+  .sub{color:var(--muted);font-size:13px;}
+  button{width:100%;margin-top:18px;padding:11px;border:none;border-radius:8px;background:var(--red);
+         color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
+  button:disabled{opacity:.5;cursor:not-allowed;}
+  .banner{padding:14px;border-radius:8px;background:var(--green-soft);color:var(--green);}
+  .banner.error{background:var(--red-soft);color:var(--red);}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">POCKET DATA OFFICE</div>
+    <div id="content"><p class="sub">Loading…</p></div>
+  </div>
+
+<script>
+  const TOKEN = location.pathname.split('/').filter(Boolean).pop();
+  const content = document.getElementById('content');
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  async function load(){
+    try {
+      const res = await fetch(`/api/book/cancel/${encodeURIComponent(TOKEN)}`);
+      if (!res.ok) throw new Error('This cancellation link is not valid.');
+      const b = await res.json();
+
+      if (b.canceledAt) {
+        content.innerHTML = '<div class="banner">This booking has already been cancelled.</div>';
+        return;
+      }
+
+      const when = new Date(b.startsAt);
+      content.innerHTML = `
+        <h1>Cancel this booking?</h1>
+        <p class="sub">
+          ${esc(b.eventTypeName || 'Meeting')}<br>
+          ${esc(when.toLocaleString(undefined, { weekday:'long', month:'long', day:'numeric', hour:'numeric', minute:'2-digit' }))}
+        </p>
+        <button id="go">Cancel booking</button>
+      `;
+      document.getElementById('go').addEventListener('click', cancel);
+    } catch (err) {
+      content.innerHTML = `<div class="banner error">${esc(err.message)}</div>`;
+    }
+  }
+
+  async function cancel(){
+    const btn = document.getElementById('go');
+    btn.disabled = true;
+    btn.textContent = 'Cancelling…';
+    try {
+      const res = await fetch(`/api/book/cancel/${encodeURIComponent(TOKEN)}`, { method: 'POST' });
+      if (!res.ok) throw new Error('Could not cancel. Please reply to the confirmation email instead.');
+      content.innerHTML = '<div class="banner">Cancelled. That time has been freed up.</div>';
+    } catch (err) {
+      content.innerHTML = `<div class="banner error">${esc(err.message)}</div>`;
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>

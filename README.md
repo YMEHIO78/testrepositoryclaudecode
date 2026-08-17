@@ -124,7 +124,58 @@ because the next sync would overwrite any local change. Reschedule or
 cancel in Calendly instead. Disconnecting removes the stored token and
 every synced booking; nothing changes in Calendly itself.
 
+## Scheduling (built-in booking pages)
+
+A self-hosted equivalent of Calendly. Each meeting type gets a public
+page at `/book/<slug>` that anyone can use without logging in; they pick
+a slot, enter their details, and get a confirmation email with a
+cancellation link.
+
+**Why build this rather than use Calendly:** slot availability is
+computed directly against `calendar_events`, so every event the app
+knows about — manual blocks, imported Calendly bookings, anything added
+later — is subtracted from what's offered. Double-booking is prevented
+*by construction*. Calendly can't do that here, because it only sees
+calendars it's connected to and can't read this app. Using the built-in
+scheduler makes the Google Calendar bridge unnecessary.
+
+Configure under **Scheduling**:
+
+- **Meeting types** — name, duration, buffer after, minimum notice, how
+  far ahead people can book, location. Each has its own link.
+- **Weekly hours** — the window you're bookable each day, plus the
+  timezone those hours are expressed in.
+- **Upcoming bookings** — who booked what, and when.
+
+Mechanics worth knowing:
+
+- **Slots are re-checked at booking time inside a `SERIALIZABLE`
+  transaction.** Between loading the page and clicking confirm, someone
+  else may have taken the slot; without that check two people could book
+  the same time. A loser gets a clear "just taken" message and refreshed
+  times.
+- **Buffers extend the footprint that must be clear**, without moving
+  the meeting — a 30-minute slot with a 10-minute after-buffer needs 40
+  clear minutes but is still booked as 30.
+- **All-day events block the whole day**; timed events without an end
+  are treated as one hour, matching how they render elsewhere.
+- **Day iteration uses luxon in the configured zone**, so DST changes
+  don't shift your hours.
+- **Confirmation emails are best-effort.** The booking is committed
+  first; if SMTP fails the booking still stands and the failure is
+  logged, rather than telling someone their booking failed when it
+  didn't. Mail goes out through a connected mailbox (see Mail above), so
+  scheduling emails need at least one mailbox connected.
+- **The public booking endpoint is rate limited** (10 per hour per IP),
+  since it's unauthenticated and writes to the calendar.
+- **Cancelling frees the slot** by deleting the calendar event; the
+  booking row is kept, marked cancelled, as a record.
+
 ## Google Calendar (double-booking prevention)
+
+*Optional if you use the built-in scheduler above — that already
+prevents double-booking without any third party. This is only needed to
+protect your time against bookings made through **Calendly**.*
 
 This integration exists for exactly one reason: **to stop Calendly
 booking over time you've blocked here.**
@@ -212,6 +263,8 @@ ready to build the real backend behind this front end.
 ```
 public/index.html   the app (dashboard, CRM, tickets, projects, finance, spec)
 views/login.html     login form (served outside the auth gate)
+views/book.html       public booking page (outside the auth gate)
+views/cancel.html     public cancellation page (outside the auth gate)
 server.js             Express server: session auth, rate limiting, static serving, mail routes
 lib/db.js             Postgres connection pool
 lib/migrate.js         creates the app's tables on startup
@@ -220,6 +273,7 @@ lib/mail.js             IMAP reading + SMTP sending
 lib/calendar.js         calendar events + .ics feed generation
 lib/calendly.js         Calendly API client + booking sync
 lib/google.js           Google Calendar bridge (mirrors events so Calendly sees them)
+lib/scheduling.js       booking pages: availability, slot maths, bookings
 package.json
 .env.example          placeholders for the secrets you'll need
 ```
