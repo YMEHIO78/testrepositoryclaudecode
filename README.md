@@ -161,11 +161,14 @@ Mechanics worth knowing:
   are treated as one hour, matching how they render elsewhere.
 - **Day iteration uses luxon in the configured zone**, so DST changes
   don't shift your hours.
-- **Confirmation emails are best-effort.** The booking is committed
-  first; if SMTP fails the booking still stands and the failure is
-  logged, rather than telling someone their booking failed when it
-  didn't. Mail goes out through a connected mailbox (see Mail above), so
-  scheduling emails need at least one mailbox connected.
+- **Confirmation emails are sent after the response, not before it.**
+  SMTP can take many seconds or stall entirely, and making someone wait
+  on it invites them to assume the booking failed and book again. The
+  request returns as soon as the booking commits; mail goes out in the
+  background and failures are logged only. SMTP calls also carry
+  connection/socket timeouts so a dead mail host can't pile up hung
+  requests. Mail goes through a connected mailbox (see Mail above), so
+  at least one must be connected for confirmations to send.
 - **The public booking endpoint is rate limited** (10 per hour per IP),
   since it's unauthenticated and writes to the calendar.
 - **Cancelling frees the slot** by deleting the calendar event; the

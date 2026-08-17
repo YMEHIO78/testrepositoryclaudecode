@@ -196,7 +196,7 @@
         <div class="banner">
           <b>You're booked.</b><br>
           ${esc(eventType.name)} — ${esc(dayLabel(when))} at ${esc(timeLabel(when))}
-          ${data.emailed ? '<br>A confirmation has been sent to ' + esc(email) + '.' : ''}
+          <br>A confirmation is on its way to ${esc(email)}.
         </div>
         ${data.cancelUrl ? `<p class="tz">Need to cancel? <a href="${esc(data.cancelUrl)}">Use this link</a>.</p>` : ''}
       `;

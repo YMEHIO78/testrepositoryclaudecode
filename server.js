@@ -104,48 +104,52 @@ app.post('/api/book/:slug', bookingLimiter, express.json(), async (req, res) => 
     const booking = await scheduling.createBooking(type, { startsAt, name, email, notes });
     const cancelUrl = `${req.protocol}://${req.get('host')}/book/cancel/${booking.cancelToken}`;
 
-    // Confirmation is best-effort: the booking is already committed, and
-    // failing the request would tell the client it didn't work when it did.
-    let emailed = false;
-    try {
-      const tz = await scheduling.getTimezone();
-      const when = new Date(booking.startsAt).toLocaleString('en-US', {
-        timeZone: tz, weekday: 'long', month: 'long', day: 'numeric',
-        hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
-      });
+    // Respond as soon as the booking is committed. Sending mail can take
+    // many seconds (or stall on an unreachable SMTP host), and making the
+    // visitor wait on it risks them assuming it failed and rebooking.
+    res.status(201).json({ startsAt: booking.startsAt, endsAt: booking.endsAt, cancelUrl });
 
-      await mail.sendMail({
-        to: email,
-        subject: `Confirmed: ${type.name}`,
-        text: [
-          `Hi ${name},`, '',
-          `Your ${type.name} is confirmed for:`,
-          `  ${when}`,
-          type.location ? `  ${type.location}` : '',
-          '', `Need to cancel? ${cancelUrl}`,
-          '', 'Pocket Data Office',
-        ].filter(Boolean).join('\n'),
-      });
-      emailed = true;
+    // Confirmations then go out in the background. A failure here is
+    // logged, not surfaced — the booking itself already succeeded.
+    (async () => {
+      try {
+        const tz = await scheduling.getTimezone();
+        const when = new Date(booking.startsAt).toLocaleString('en-US', {
+          timeZone: tz, weekday: 'long', month: 'long', day: 'numeric',
+          hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+        });
 
-      const owner = (await mail.listAccounts())[0];
-      if (owner) {
         await mail.sendMail({
-          to: owner,
-          replyTo: email,
-          subject: `New booking: ${type.name} — ${name}`,
+          to: email,
+          subject: `Confirmed: ${type.name}`,
           text: [
-            `${name} <${email}> booked ${type.name}.`, '',
-            `When: ${when}`,
-            notes ? `Notes: ${notes}` : '',
+            `Hi ${name},`, '',
+            `Your ${type.name} is confirmed for:`,
+            `  ${when}`,
+            type.location ? `  ${type.location}` : '',
+            '', `Need to cancel? ${cancelUrl}`,
+            '', 'Pocket Data Office',
           ].filter(Boolean).join('\n'),
         });
-      }
-    } catch (err) {
-      console.error('Booking confirmation email failed:', err.message);
-    }
 
-    res.status(201).json({ startsAt: booking.startsAt, endsAt: booking.endsAt, cancelUrl, emailed });
+        const owner = (await mail.listAccounts())[0];
+        if (owner) {
+          await mail.sendMail({
+            to: owner,
+            replyTo: email,
+            subject: `New booking: ${type.name} — ${name}`,
+            text: [
+              `${name} <${email}> booked ${type.name}.`, '',
+              `When: ${when}`,
+              notes ? `Notes: ${notes}` : '',
+            ].filter(Boolean).join('\n'),
+          });
+        }
+      } catch (err) {
+        console.error('Booking confirmation email failed:', err.message);
+      }
+    })();
+    return;
   } catch (err) {
     // Slot-taken is an expected race, not a server fault.
     const taken = /taken|not available|no longer/i.test(err.message);
