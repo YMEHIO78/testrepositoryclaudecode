@@ -12,6 +12,7 @@ const { pool } = require('./lib/db');
 const { migrate } = require('./lib/migrate');
 const mail = require('./lib/mail');
 const calendar = require('./lib/calendar');
+const calendly = require('./lib/calendly');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -250,6 +251,11 @@ app.post('/api/calendar/events', express.json(), async (req, res) => {
 
 app.patch('/api/calendar/events/:id', express.json(), async (req, res) => {
   try {
+    const check = await calendar.isEditable(Number(req.params.id));
+    if (!check.exists) return res.status(404).json({ error: 'Event not found.' });
+    if (!check.editable) {
+      return res.status(409).json({ error: `This event is synced from ${check.source} — edit it there instead.` });
+    }
     const updated = await calendar.updateEvent(Number(req.params.id), req.body || {});
     if (!updated) return res.status(404).json({ error: 'Event not found.' });
     res.json(updated);
@@ -261,12 +267,60 @@ app.patch('/api/calendar/events/:id', express.json(), async (req, res) => {
 
 app.delete('/api/calendar/events/:id', async (req, res) => {
   try {
+    const check = await calendar.isEditable(Number(req.params.id));
+    if (!check.exists) return res.status(404).json({ error: 'Event not found.' });
+    if (!check.editable) {
+      return res.status(409).json({ error: `This event is synced from ${check.source} — cancel it there instead.` });
+    }
     const removed = await calendar.deleteEvent(Number(req.params.id));
     if (!removed) return res.status(404).json({ error: 'Event not found.' });
     res.status(204).end();
   } catch (err) {
     console.error('Failed to delete event:', err);
     res.status(500).json({ error: 'Could not delete the event.' });
+  }
+});
+
+// --- Calendly ---
+
+app.get('/api/calendly/status', async (req, res) => {
+  try {
+    const connected = await calendly.isConfigured();
+    if (!connected) return res.json({ connected: false });
+    const token = await calendly.getToken();
+    const user = await calendly.getCurrentUser(token);
+    res.json({ connected: true, account: user.email, viaEnv: !!process.env.CALENDLY_TOKEN });
+  } catch (err) {
+    // A stored-but-rejected token is "connected but broken" — say so
+    // rather than reporting a clean disconnected state.
+    res.json({ connected: true, error: err.message });
+  }
+});
+
+app.post('/api/calendly/connect', express.json(), async (req, res) => {
+  const { token } = req.body || {};
+  if (!token) return res.status(400).json({ error: 'A personal access token is required.' });
+  try {
+    const user = await calendly.getCurrentUser(token); // validate before storing
+    await calendly.saveToken(token);
+    const result = await calendly.sync();
+    res.json({ account: user.email, ...result });
+  } catch (err) {
+    res.status(400).json({ error: `Calendly rejected that token: ${err.message}` });
+  }
+});
+
+app.post('/api/calendly/disconnect', async (req, res) => {
+  await calendly.deleteToken();
+  res.status(204).end();
+});
+
+app.post('/api/calendly/sync', async (req, res) => {
+  try {
+    res.json(await calendly.sync());
+  } catch (err) {
+    console.error('Calendly sync failed:', err);
+    res.status(502).json({ error: err.message });
   }
 });
 
@@ -286,6 +340,27 @@ app.post('/api/calendar/feed/rotate', async (req, res) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Poll Calendly for new/cancelled bookings. The guard stops a slow sync
+// from overlapping the next tick; unhandled failures are logged and the
+// loop continues rather than taking the process down.
+const CALENDLY_POLL_MINUTES = Number(process.env.CALENDLY_POLL_MINUTES || 5);
+let calendlySyncRunning = false;
+
+async function pollCalendly() {
+  if (calendlySyncRunning) return;
+  calendlySyncRunning = true;
+  try {
+    const result = await calendly.sync();
+    if (!result.skipped && (result.upserted || result.removed)) {
+      console.log(`Calendly sync: ${result.upserted} updated, ${result.removed} removed`);
+    }
+  } catch (err) {
+    console.error('Calendly sync failed:', err.message);
+  } finally {
+    calendlySyncRunning = false;
+  }
+}
+
 migrate()
   .catch((err) => {
     console.error('Migration failed:', err);
@@ -295,4 +370,8 @@ migrate()
     app.listen(PORT, () => {
       console.log(`Pocket Data Office listening on port ${PORT}`);
     });
+
+    const interval = setInterval(pollCalendly, CALENDLY_POLL_MINUTES * 60 * 1000);
+    interval.unref?.(); // don't hold the process open on shutdown
+    pollCalendly();
   });

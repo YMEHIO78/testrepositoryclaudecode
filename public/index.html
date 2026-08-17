@@ -137,6 +137,7 @@
   .cal-day:hover{background:#faf9f6;}
   .cal-ev{cursor:pointer;text-align:left;display:block;width:100%;border:none;font-family:inherit;}
   .cal-ev:hover{filter:brightness(.95);}
+  .cal-ev.synced{background:var(--green-soft);color:var(--green);}
   .cal-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
   .cal-toolbar b{min-width:150px;text-align:center;}
   .cal-editor{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:12px;}
@@ -447,6 +448,12 @@
         <div class="int-row">
           <span class="msg-snippet">Subscription URL and event management are on the <a href="#" data-goto="calendar">Calendar</a> page.</span>
         </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <h3 style="margin-bottom:2px;">Calendly</h3>
+        <p class="msg-snippet" style="margin-bottom:12px;">Pulls your scheduled bookings onto the calendar and into the subscription feed. One-way — Calendly can't see events created here, so it won't avoid double-booking against them.</p>
+        <div id="intCalendly"><div class="int-row"><span class="msg-snippet">Loading…</span></div></div>
       </div>
 
       <div class="card">
@@ -847,6 +854,93 @@
     }
   });
 
+  // --- Calendly ---
+  async function loadCalendly(){
+    const wrap = document.getElementById('intCalendly');
+    try {
+      const res = await fetch('/api/calendly/status');
+      const s = await res.json();
+      if (s.connected) {
+        wrap.innerHTML = `
+          <div class="int-row">
+            <span>${s.error ? 'Token stored, but Calendly rejected it' : escapeHtml(s.account || 'Connected')}</span>
+            <span style="display:flex;gap:6px;">
+              <button type="button" class="int-btn disconnected" id="clSync">Sync now</button>
+              <button type="button" class="int-btn connected" id="clDisconnect">${s.error ? 'Remove' : 'Connected'}</button>
+            </span>
+          </div>
+          ${s.error ? `<div class="int-row"><span class="msg-snippet" style="color:var(--red);">${escapeHtml(s.error)}</span></div>` : ''}
+          ${s.viaEnv ? '<div class="int-row"><span class="msg-snippet">Token supplied via the CALENDLY_TOKEN environment variable.</span></div>' : ''}
+          <div class="int-row"><span class="msg-snippet" id="clSyncStatus"></span></div>`;
+
+        document.getElementById('clSync').addEventListener('click', async () => {
+          const st = document.getElementById('clSyncStatus');
+          st.textContent = 'Syncing…';
+          try {
+            const r = await fetch('/api/calendly/sync', { method: 'POST' });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Sync failed.');
+            st.textContent = d.skipped ? 'Not configured.' : `${d.upserted} booking(s) synced, ${d.removed} removed.`;
+            loadCalendar();
+          } catch (err) {
+            st.textContent = err.message;
+          }
+        });
+
+        document.getElementById('clDisconnect').addEventListener('click', async () => {
+          if (!confirm('Disconnect Calendly? The stored token and all synced bookings will be removed from this app. Nothing changes in Calendly itself.')) return;
+          await fetch('/api/calendly/disconnect', { method: 'POST' });
+          loadCalendly();
+          loadCalendar();
+        });
+        return;
+      }
+
+      wrap.innerHTML = `
+        <div class="int-row">
+          <span>Not connected</span>
+          <button type="button" class="int-btn disconnected" id="clConnect">Connect</button>
+        </div>`;
+      document.getElementById('clConnect').addEventListener('click', () => {
+        wrap.innerHTML = `
+          <div class="connect-form">
+            <label>Calendly personal access token</label>
+            <input type="password" id="clToken" autocomplete="new-password" placeholder="Paste token">
+            <p class="msg-snippet" style="margin-top:6px;">Create one at calendly.com → Integrations → API &amp; Webhooks → Personal Access Tokens.</p>
+            <div class="row" style="margin-top:10px;">
+              <button type="button" class="btn" id="clSave">Connect</button>
+              <button type="button" class="btn ghost" id="clCancel">Cancel</button>
+              <span class="reply-status" id="clStatus"></span>
+            </div>
+          </div>`;
+        document.getElementById('clToken').focus();
+        document.getElementById('clCancel').addEventListener('click', loadCalendly);
+        document.getElementById('clSave').addEventListener('click', async () => {
+          const st = document.getElementById('clStatus');
+          const token = document.getElementById('clToken').value.trim();
+          if (!token) { st.textContent = 'Paste the token first.'; return; }
+          st.textContent = 'Checking token…';
+          try {
+            const r = await fetch('/api/calendly/connect', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Could not connect.');
+            showBanner(`Connected Calendly (${d.account}) — ${d.upserted} booking(s) synced.`, 'ok');
+            loadCalendly();
+            loadCalendar();
+          } catch (err) {
+            st.textContent = err.message;
+          }
+        });
+      });
+    } catch (err) {
+      wrap.innerHTML = '<div class="int-row"><span class="msg-snippet">Calendly status unavailable.</span></div>';
+    }
+  }
+
   // --- Calendar ---
   let calCursor = new Date();
   let calEvents = [];
@@ -918,7 +1012,7 @@
         .sort((a,b) => new Date(a.startsAt) - new Date(b.startsAt));
 
       cell.innerHTML = `<span class="d">${day.getDate()}</span>`
-        + evs.map(ev => `<button type="button" class="cal-ev" data-id="${ev.id}">${escapeHtml(eventTimeLabel(ev) + ev.title)}</button>`).join('');
+        + evs.map(ev => `<button type="button" class="cal-ev${ev.source !== 'manual' ? ' synced' : ''}" data-id="${ev.id}" title="${ev.source !== 'manual' ? 'Synced from ' + escapeHtml(ev.source) : ''}">${escapeHtml(eventTimeLabel(ev) + ev.title)}</button>`).join('');
       grid.appendChild(cell);
     }
   }
@@ -928,6 +1022,23 @@
   function openEditor(event, defaultDateKey){
     const wrap = document.getElementById('calEditor');
     const isEdit = !!event;
+
+    // Synced events belong to the system they came from; showing an
+    // editable form would invite changes the next sync silently undoes.
+    if (isEdit && event.source !== 'manual') {
+      const when = new Date(event.startsAt);
+      wrap.innerHTML = `
+        <div class="cal-editor">
+          <div class="msg-subject">${escapeHtml(event.title)}</div>
+          <div class="msg-meta" style="margin-top:4px;">${when.toLocaleString()}${event.location ? ' · ' + escapeHtml(event.location) : ''}</div>
+          <p class="msg-snippet" style="margin-top:10px;">Synced from ${escapeHtml(event.source)} — reschedule or cancel it there and it'll update here on the next sync.</p>
+          <div class="actions">
+            <button type="button" class="btn ghost" id="evCloseRO">Close</button>
+          </div>
+        </div>`;
+      document.getElementById('evCloseRO').addEventListener('click', closeEditor);
+      return;
+    }
 
     // datetime-local wants local wall-clock, not UTC.
     const toLocalInput = (iso) => {
@@ -1090,6 +1201,7 @@
     loadIntegrations();
     loadCalendar();
     loadFeedUrl();
+    loadCalendly();
   })();
 </script>
 </body>

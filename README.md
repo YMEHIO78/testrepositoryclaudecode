@@ -98,10 +98,34 @@ the path is the only thing protecting it, so:
 - **Reset URL** on the Calendar page rotates the token, which immediately
   breaks any device still using the old one.
 
-`source` on each event marks where it came from (`manual` today). When
-Tickets and Projects become real database records, their dates can be
-written in as `ticket`/`project` rows and will appear on the grid and in
-the feed with no further changes.
+`source` on each event marks where it came from — `manual` for events
+typed in here, `calendly` for synced bookings. When Tickets and Projects
+become real database records, their dates can be written in as
+`ticket`/`project` rows and will appear on the grid and in the feed with
+no further changes.
+
+## Calendly
+
+Scheduled bookings are pulled in and shown on the calendar (green) and in
+the `.ics` feed. Connect under **Integrations** with a personal access
+token from calendly.com → Integrations → API & Webhooks, or set
+`CALENDLY_TOKEN` in Railway to keep the token out of the browser
+entirely (the env var wins if both are present). The app polls every
+`CALENDLY_POLL_MINUTES` minutes (default 5); **Sync now** forces one.
+
+**This sync is one-way, and that has a real consequence.** Calendly only
+checks availability against calendars it is itself connected to — Google,
+Outlook/Office 365, iCloud, Exchange — and cannot subscribe to an `.ics`
+feed. So an event you create in this app does **not** block a Calendly
+slot, and someone can book over it. Calendly owns its bookings; this app
+mirrors them and owns everything else. Bear that in mind before relying
+on an event here to protect your time.
+
+Synced events are read-only in this app: the API rejects edits and
+deletes on them with a 409, and the UI shows them in a read-only panel,
+because the next sync would overwrite any local change. Reschedule or
+cancel in Calendly instead. Disconnecting removes the stored token and
+every synced booking; nothing changes in Calendly itself.
 
 ## Security — done so far, and what's still on you
 
@@ -147,6 +171,7 @@ lib/migrate.js         creates the app's tables on startup
 lib/crypto.js           AES-256-GCM helpers for encrypting credentials at rest
 lib/mail.js             IMAP reading + SMTP sending
 lib/calendar.js         calendar events + .ics feed generation
+lib/calendly.js         Calendly API client + booking sync
 package.json
 .env.example          placeholders for the secrets you'll need
 ```
