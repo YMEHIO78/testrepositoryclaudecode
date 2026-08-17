@@ -149,6 +149,47 @@
   .reply-box textarea{width:100%;min-height:70px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-lg);font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);resize:vertical;}
   .reply-box .row{display:flex;gap:8px;align-items:center;}
   .reply-status{font-size:11.5px;color:var(--muted);}
+  /* Dashboard, per the reference layout */
+  .dash-greeting{font-size:40px;font-weight:600;letter-spacing:-.015em;margin:0;line-height:1.1;}
+  .dash-sub{font-size:17px;color:#605d5d;margin:4px 0 0;max-width:60ch;}
+  .stat-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;
+    border-top:2px solid var(--color-text);border-bottom:1px solid var(--color-divider);margin-top:26px;}
+  .stat-strip.secondary{border-top:none;margin-top:0;grid-template-columns:repeat(3,1fr);}
+  .stat-cell{display:flex;flex-direction:column;gap:2px;padding:18px 22px 20px 0;}
+  .stat-cell .label{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--color-neutral-600);font-weight:600;}
+  .stat-cell .value{font-size:38px;font-weight:600;letter-spacing:-.02em;}
+  .stat-cell .value.accent{color:var(--color-accent);}
+  .stat-cell .value.small{font-size:22px;letter-spacing:-.01em;}
+  .stat-cell .note{font-size:12px;color:var(--color-neutral-500);}
+
+  .dash-cols{display:grid;grid-template-columns:1.15fr 1fr .95fr;gap:48px;margin:38px 0 52px;}
+  .dash-lower{display:grid;grid-template-columns:1.4fr 1fr;gap:48px;}
+  .dash-col-head{display:flex;align-items:baseline;justify-content:space-between;
+    border-bottom:1px solid rgba(32,30,29,.18);padding-bottom:7px;margin-bottom:10px;}
+  .dash-col-head h2{font-size:15px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;margin:0;}
+  .dash-col-head a{font-size:13px;color:var(--color-accent);}
+  .dash-row{display:flex;flex-direction:column;gap:3px;text-align:left;font-family:inherit;width:100%;
+    cursor:pointer;background:none;border:0;border-bottom:1px solid rgba(32,30,29,.08);padding:9px 0 11px;}
+  .dash-row:hover{background:var(--color-neutral-200);}
+  .dash-row .top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;width:100%;}
+  .dash-row .who{font-size:14px;font-weight:600;}
+  .dash-row .when{font-size:12px;color:var(--color-neutral-500);flex:none;}
+  .dash-row .what{font-size:14px;color:var(--color-text);}
+  .dash-row .meta{font-size:12px;color:var(--color-neutral-600);}
+
+  .bar-row{display:flex;align-items:center;gap:12px;padding:7px 0;}
+  .bar-row .bar-label{width:148px;flex:none;font-size:14px;color:#444141;}
+  .bar-row .bar-track{flex:1;height:15px;background:#eee9dd;border-radius:var(--radius-sm);overflow:hidden;}
+  .bar-row .bar-fill{height:100%;background:var(--color-accent);}
+  .bar-row .bar-value{width:96px;flex:none;text-align:right;font-size:14px;font-weight:600;}
+  .bar-row .bar-count{width:34px;flex:none;text-align:right;font-size:13px;color:var(--color-neutral-500);}
+
+  .cash-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;}
+  .cash-row .k{font-size:15px;color:#444141;}
+  .cash-row .v{font-size:16px;font-weight:600;}
+  .cash-row .v.warn{color:var(--color-accent-2);}
+  .cash-row .v.accent{color:var(--color-accent);}
+
   /* Inbox master-detail, per the reference layout */
   .inbox-view{display:flex;align-items:stretch;min-height:0;flex:1;padding:0;max-width:none;}
   .inbox-list{width:380px;flex:none;border-right:1px solid var(--color-divider);display:flex;flex-direction:column;min-height:0;}
@@ -351,47 +392,35 @@
 
     <!-- ================= DASHBOARD ================= -->
     <div class="view" id="view-dash">
-      <h1>Good morning, Yosef.</h1>
-      <p class="sub">Tuesday, 11 August 2026 · Week 33, Q3 2026 — three emails are waiting on a reply, two tickets breach SLA tomorrow, and the Hatcher proposal has been open for nine days.</p>
+      <h1 class="dash-greeting" id="dashGreeting">Good morning.</h1>
+      <p class="dash-sub" id="dashSub">Loading today's picture…</p>
 
-      <div class="grid cols-4">
-        <div class="card"><h3>Open tickets</h3><div class="stat">5</div><div class="stat-note">2 due within 24h</div></div>
-        <div class="card"><h3>New emails</h3><div class="stat">7</div><div class="stat-note">across both Outlook inboxes</div></div>
-        <div class="card"><h3>Unbilled</h3><div class="stat">$4,850</div><div class="stat-note">ready to push to Wave</div></div>
-        <div class="card"><h3>Retainer MRR</h3><div class="stat">$9,200</div><div class="stat-note">4 clients on monthly terms</div></div>
-      </div>
+      <div class="stat-strip" id="dashStats"></div>
+      <div class="stat-strip secondary" id="dashStats2"></div>
 
-      <div class="grid cols-2" style="margin-top:14px;">
-        <div class="card">
-          <div class="panel-title"><h3>Needs your reply</h3><a href="#" data-goto="inbox">Inbox →</a></div>
-          <div class="msg"><div class="avatar">DH</div><div><div class="msg-meta">Dana Hatcher · 8:41 AM</div><div class="msg-subject">Can last week's numbers be trusted?</div><div class="msg-snippet">Nightly refresh has failed three nights running…</div></div></div>
-          <div class="msg"><div class="avatar">RD</div><div><div class="msg-meta">Ridgeline Dental · Yesterday</div><div class="msg-subject">Phase 2 scope — one open question</div><div class="msg-snippet">Happy to sign off once we settle the third workstream.</div></div></div>
-          <div class="msg"><div class="avatar">MC</div><div><div class="msg-meta">Marlowe Clinic · Mon</div><div class="msg-subject">Invoice INV-2044 — quick question</div><div class="msg-snippet">Can you confirm this covers the August retainer?</div></div></div>
+      <div class="dash-cols">
+        <div class="dash-col">
+          <div class="dash-col-head"><h2>Needs your reply</h2><a href="#" data-goto="inbox">Inbox</a></div>
+          <div id="dashReply"><p class="msg-snippet">Loading…</p></div>
         </div>
-        <div class="card">
-          <div class="panel-title"><h3>Tickets at risk</h3><a href="#" data-goto="tickets">Desk →</a></div>
-          <table><tbody>
-            <tr><td class="num">TKT-118</td><td>due tomorrow, 5pm</td><td>Nightly warehouse refresh failing</td><td>Hatcher &amp; Co. · <span class="pill red">Waiting</span></td></tr>
-            <tr><td class="num">TKT-121</td><td>due tomorrow, 9am</td><td>Export permissions error</td><td>Marlowe Clinic · <span class="pill amber">In progress</span></td></tr>
-          </tbody></table>
+        <div class="dash-col">
+          <div class="dash-col-head"><h2>Tickets at risk</h2><a href="#" data-goto="tickets">Desk</a></div>
+          <div id="dashRisk"><p class="msg-snippet">Loading…</p></div>
+        </div>
+        <div class="dash-col">
+          <div class="dash-col-head"><h2>Today</h2><a href="#" data-goto="calendar">Calendar</a></div>
+          <div id="dashToday"><p class="msg-snippet">Loading…</p></div>
         </div>
       </div>
 
-      <div class="grid cols-2" style="margin-top:14px;">
-        <div class="card">
-          <div class="panel-title"><h3>Today</h3><a href="#" data-goto="calendar">Calendar →</a></div>
-          <div class="msg"><div class="avatar">10a</div><div><div class="msg-subject">Ridgeline Dental — Phase 2 review</div><div class="msg-meta">Outlook · Zoom link attached</div></div></div>
-          <div class="msg"><div class="avatar">2p</div><div><div class="msg-subject">Discovery call — Marlowe Clinic referral</div><div class="msg-meta">Outlook · booked via scheduling link</div></div></div>
+      <div class="dash-lower">
+        <div>
+          <div class="dash-col-head"><h2>Pipeline by stage</h2><a href="#" data-goto="crm">CRM</a></div>
+          <div id="dashPipeline"><p class="msg-snippet">Loading…</p></div>
         </div>
-        <div class="card">
-          <div class="panel-title"><h3>Cash position</h3><a href="#" data-goto="finance">Finance →</a></div>
-          <table><tbody>
-            <tr><td>Invoiced, awaiting payment</td><td class="num" style="text-align:right;">$4,850</td></tr>
-            <tr><td>Overdue &gt; 30 days</td><td class="num" style="text-align:right;">$0</td></tr>
-            <tr><td>Expenses this month</td><td class="num" style="text-align:right;">$740</td></tr>
-            <tr><td>Forecast, next 90 days</td><td class="num" style="text-align:right;">$27,600</td></tr>
-          </tbody></table>
-          <p class="msg-snippet" style="margin-top:8px;">Figures mirror Wave; the app holds the client and project links.</p>
+        <div>
+          <div class="dash-col-head"><h2>Cash position</h2><a href="#" data-goto="finance">Finance</a></div>
+          <div id="dashCash"></div>
         </div>
       </div>
     </div>
@@ -832,6 +861,164 @@
     }
   }
 
+  // --- Dashboard ---
+  // Composed from state the other views already loaded rather than its own
+  // endpoint, so opening the app doesn't trigger a second round of IMAP and
+  // API calls. Each loader calls renderDashboard() when its data lands.
+  function renderDashboard(){
+    const greetEl = document.getElementById('dashGreeting');
+    if (!greetEl) return;
+
+    const hour = new Date().getHours();
+    const partOfDay = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+    greetEl.textContent = `Good ${partOfDay}.`;
+
+    const unread = inboxData.messages.filter(m => !m.isRead);
+    const openTickets = tkData.tickets.filter(t => !['resolved','closed'].includes(t.status));
+    const dueSoon = openTickets.filter(t => t.slaDueAt &&
+      new Date(t.slaDueAt) - Date.now() < 24*3600*1000);
+
+    const today = new Date();
+    const todays = calEvents.filter(e => sameDay(new Date(e.startsAt), today));
+
+    // Recurring value from won clients is the closest thing to MRR the app
+    // actually knows; anything invoice-derived would be invented.
+    const mrrCents = crmData.clients
+      .filter(c => c.stage === 'client' && c.recurring)
+      .reduce((s, c) => s + (c.valueCents || 0), 0);
+    const pipelineCents = crmData.clients
+      .filter(c => !['client','lost'].includes(c.stage))
+      .reduce((s, c) => s + (c.valueCents || 0), 0);
+
+    const dateLine = today.toLocaleDateString(undefined,
+      { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+    const bits = [];
+    if (unread.length) bits.push(`${unread.length} email${unread.length===1?'':'s'} unread`);
+    if (dueSoon.length) bits.push(`${dueSoon.length} ticket${dueSoon.length===1?'':'s'} breaching SLA within a day`);
+    if (todays.length) bits.push(`${todays.length} thing${todays.length===1?'':'s'} on today's calendar`);
+    document.getElementById('dashSub').textContent =
+      `${dateLine}${bits.length ? ' — ' + bits.join(', ') + '.' : ' — nothing urgent.'}`;
+
+    document.getElementById('dashStats').innerHTML = `
+      <div class="stat-cell">
+        <span class="label">Open tickets</span>
+        <span class="value accent">${openTickets.length}</span>
+        <span class="note">${dueSoon.length} due within 24h</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Unread email</span>
+        <span class="value accent">${unread.length}</span>
+        <span class="note">across ${inboxData.accounts.length} connected inbox${inboxData.accounts.length===1?'':'es'}</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Unbilled</span>
+        <span class="value">—</span>
+        <span class="note">needs an accounting integration</span>
+      </div>`;
+
+    document.getElementById('dashStats2').innerHTML = `
+      <div class="stat-cell">
+        <span class="label">Retainer MRR</span>
+        <span class="value small">${escapeHtml(money(mrrCents, false))}</span>
+        <span class="note">recurring clients</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Open pipeline</span>
+        <span class="value small">${escapeHtml(money(pipelineCents, false))}</span>
+        <span class="note">not yet won or lost</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Clients</span>
+        <span class="value small">${crmData.clients.filter(c => c.stage === 'client').length}</span>
+        <span class="note">of ${crmData.clients.length} records</span>
+      </div>`;
+
+    // Needs your reply
+    document.getElementById('dashReply').innerHTML = unread.length
+      ? unread.slice(0, 4).map(m => `
+        <button type="button" class="dash-row" data-jump="inbox" data-account="${escapeHtml(m.account)}" data-uid="${escapeHtml(m.id)}">
+          <div class="top">
+            <span class="who">${escapeHtml(m.from)}</span>
+            <span class="when">${escapeHtml(timeAgo(m.receivedDateTime))}</span>
+          </div>
+          <span class="what">${escapeHtml(m.subject || '(no subject)')}</span>
+          ${m.client ? `<span class="meta" style="color:var(--color-accent);">${escapeHtml(m.client.name)}</span>` : ''}
+        </button>`).join('')
+      : `<p class="msg-snippet">${inboxData.accounts.length ? 'Nothing unread.' : 'No mailbox connected.'}</p>`;
+
+    // Tickets at risk — soonest deadline first, undated last
+    const risk = openTickets
+      .filter(t => t.slaDueAt)
+      .sort((a,b) => new Date(a.slaDueAt) - new Date(b.slaDueAt));
+    document.getElementById('dashRisk').innerHTML = risk.length
+      ? risk.slice(0, 4).map(t => `
+        <button type="button" class="dash-row" data-jump="tickets" data-ticket="${t.id}">
+          <div class="top">
+            <span class="who">${escapeHtml(t.reference)}</span>
+            <span class="when">${slaLabel(t.slaDueAt)}</span>
+          </div>
+          <span class="what">${escapeHtml(t.subject)}</span>
+          <span class="meta">${escapeHtml(t.clientName || 'no client')}</span>
+        </button>`).join('')
+      : '<p class="msg-snippet">No tickets with a deadline.</p>';
+
+    // Today
+    document.getElementById('dashToday').innerHTML = todays.length
+      ? todays.sort((a,b) => new Date(a.startsAt) - new Date(b.startsAt)).map(e => `
+        <button type="button" class="dash-row" data-jump="calendar">
+          <div class="top">
+            <span class="who">${escapeHtml(eventTimeLabel(e) || 'All day')}</span>
+            <span class="when">${escapeHtml(e.source === 'manual' ? '' : e.source)}</span>
+          </div>
+          <span class="what">${escapeHtml(e.title)}</span>
+          ${e.location ? `<span class="meta">${escapeHtml(e.location)}</span>` : ''}
+        </button>`).join('')
+      : '<p class="msg-snippet">Nothing scheduled today.</p>';
+
+    // Pipeline by stage
+    const maxVal = Math.max(1, ...crmData.stages.map(s =>
+      crmData.clients.filter(c => c.stage === s.key).reduce((sum,c) => sum + (c.valueCents||0), 0)));
+    document.getElementById('dashPipeline').innerHTML = crmData.stages.length
+      ? crmData.stages.map(s => {
+          const inStage = crmData.clients.filter(c => c.stage === s.key);
+          const val = inStage.reduce((sum,c) => sum + (c.valueCents||0), 0);
+          return `
+            <div class="bar-row">
+              <div class="bar-label">${escapeHtml(s.label)}</div>
+              <div class="bar-track"><div class="bar-fill" style="width:${Math.round((val/maxVal)*100)}%;"></div></div>
+              <div class="bar-value">${escapeHtml(money(val, false))}</div>
+              <div class="bar-count">${inStage.length}</div>
+            </div>`;
+        }).join('')
+      : '<p class="msg-snippet">No clients yet.</p>';
+
+    // Cash position stays empty rather than inventing figures — there's no
+    // accounting integration yet, and plausible-looking numbers here would
+    // be worse than a blank.
+    document.getElementById('dashCash').innerHTML = `
+      <div class="cash-row"><span class="k">Invoiced, awaiting payment</span><span class="v">—</span></div>
+      <div class="cash-row"><span class="k">Overdue &gt; 30 days</span><span class="v">—</span></div>
+      <div class="cash-row"><span class="k">Expenses this month</span><span class="v">—</span></div>
+      <div class="cash-row"><span class="k">Forecast, next 90 days</span><span class="v">—</span></div>
+      <p class="msg-snippet" style="margin-top:10px;">No accounting integration connected, so these are blank rather than estimated. Wiring up Wave would fill them.</p>`;
+  }
+
+  // Dashboard rows jump to the relevant view, opening the exact record.
+  document.querySelector('#view-dash').addEventListener('click', (e) => {
+    const row = e.target.closest('[data-jump]');
+    if (!row) return;
+    const target = row.dataset.jump;
+    goto(target);
+    if (target === 'inbox' && row.dataset.account) {
+      selectedMailId = `${row.dataset.account}:${row.dataset.uid}`;
+      renderInboxList();
+      openMessage(row.dataset.account, row.dataset.uid);
+    } else if (target === 'tickets' && row.dataset.ticket) {
+      const t = tkData.tickets.find(x => x.id === Number(row.dataset.ticket));
+      if (t) openTicketEditor(t);
+    }
+  });
+
   // --- Inbox: master-detail ---
   // The list stays put on the left and the selected message fills the
   // pane on the right, matching the reference. Bodies are fetched on
@@ -899,6 +1086,7 @@
     }
     renderInboxTabs();
     renderInboxList();
+    renderDashboard();
   }
 
   document.getElementById('inboxTabs').addEventListener('click', (e) => {
@@ -1329,6 +1517,7 @@
       return;
     }
     renderTickets();
+    renderDashboard();
   }
 
   function renderTickets(){
@@ -1505,6 +1694,7 @@
         + crmData.stages.map(s => `<option value="${s.key}">${escapeHtml(s.label)}</option>`).join('');
     }
     renderCrm();
+    renderDashboard();
   }
 
   function renderCrm(){
@@ -2127,6 +2317,7 @@
       calEvents = [];
     }
     renderCalendar();
+    renderDashboard();
   }
 
   function renderCalendar(){
