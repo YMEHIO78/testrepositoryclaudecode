@@ -124,6 +124,26 @@ because the next sync would overwrite any local change. Reschedule or
 cancel in Calendly instead. Disconnecting removes the stored token and
 every synced booking; nothing changes in Calendly itself.
 
+## CRM
+
+Real clients and contacts, replacing the mockup table. Built first
+because everything else references a client — tickets, projects, and
+invoices would otherwise need a fake client link that got rewritten
+later.
+
+- **Clients** move through a pipeline: In contact → Engaging → Offer sent
+  → Client, plus Lost. Value is stored in cents (exact totals, no float
+  drift) and can be flagged recurring monthly.
+- **Contacts** belong to a client; one is primary. Setting a new primary
+  clears the old one on write rather than via constraint, so switching is
+  a single action.
+- **Inbox linkage.** Mail from an address matching a known contact is
+  labelled with that client in the Inbox, automatically. That lookup is
+  wrapped so a CRM failure can't take the inbox down with it.
+
+Money handling note: amounts are entered in dollars in the UI and stored
+as integer cents.
+
 ## Scheduling (built-in booking pages)
 
 A self-hosted equivalent of Calendly. Each meeting type gets a public
@@ -284,6 +304,7 @@ lib/calendar.js         calendar events + .ics feed generation
 lib/calendly.js         Calendly API client + booking sync
 lib/google.js           Google Calendar bridge (mirrors events so Calendly sees them)
 lib/scheduling.js       booking pages: availability, slot maths, bookings
+lib/crm.js              clients, contacts, and inbox sender matching
 package.json
 .env.example          placeholders for the secrets you'll need
 ```

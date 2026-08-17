@@ -350,18 +350,25 @@
     <div class="view hidden" id="view-crm">
       <h1>CRM &amp; Leads</h1>
       <p class="sub">One table for prospects and clients. The stage field carries them from a cold name to a paying retainer; nothing gets re-typed on the way.</p>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+        <button type="button" class="btn" id="crmAdd">Add client</button>
+        <select id="crmFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
+          <option value="">All stages</option>
+        </select>
+        <span class="msg-snippet" id="crmSummary"></span>
+      </div>
+
+      <div id="crmEditor"></div>
+
       <div class="card">
         <table>
-          <thead><tr><th>Client / lead</th><th>Stage</th><th>Primary contact</th><th>Packages</th><th>Value</th><th>Last touch</th></tr></thead>
-          <tbody>
-            <tr><td><b>Hatcher &amp; Co. Logistics</b></td><td><span class="pill brand">Client</span></td><td>Dana Hatcher</td><td>Data Warehousing (1)</td><td class="num">$4,200/mo</td><td>Today</td></tr>
-            <tr><td><b>Ridgeline Dental Group</b></td><td><span class="pill brand">Client</span></td><td>Priya Nair</td><td>Manual Data (7)</td><td class="num">$2,600</td><td>Yesterday</td></tr>
-            <tr><td><b>Marlowe Clinic</b></td><td><span class="pill amber">Offer sent</span></td><td>Sam Ortiz</td><td>Data Analysis (3)</td><td class="num">$3,100</td><td>Mon</td></tr>
-            <tr><td>Brightview Manufacturing</td><td><span class="pill grey">Engaging</span></td><td>Tom Alvarez</td><td>—</td><td class="num">$5,400</td><td>3 days ago</td></tr>
-            <tr><td>Cedar Grove Nonprofit</td><td><span class="pill grey">In contact</span></td><td>Renee Osei</td><td>—</td><td class="num">$1,800</td><td>1 wk ago</td></tr>
-          </tbody>
+          <thead><tr><th>Client / lead</th><th>Stage</th><th>Primary contact</th><th>Contacts</th><th>Value</th><th>Last touch</th></tr></thead>
+          <tbody id="crmRows"><tr><td colspan="6" class="msg-snippet">Loading…</td></tr></tbody>
         </table>
       </div>
+
+      <div class="note">Mail from a known contact's address is labelled with their client automatically in the <a href="#" data-goto="inbox">Inbox</a>. Projects and tickets will hang off these records once those modules are real.</div>
     </div>
 
     <!-- ================= PROJECTS ================= -->
@@ -696,7 +703,10 @@
           <div style="flex:1;">
             <div class="msg-meta">${escapeHtml(m.from)} · ${timeAgo(m.receivedDateTime)} · to ${escapeHtml(m.account)}</div>
             <div class="msg-subject">${escapeHtml(m.subject || '(no subject)')}</div>
-            <div class="msg-snippet">${escapeHtml(m.fromAddress)}</div>
+            <div class="msg-snippet">
+              ${escapeHtml(m.fromAddress)}
+              ${m.client ? ` · <span class="pill brand">${escapeHtml(m.client.name)}</span>` : ''}
+            </div>
           </div>
           <div class="msg-actions">
             ${pill}
@@ -891,8 +901,229 @@
     }
   });
 
+  // --- CRM ---
+  let crmData = { stages: [], clients: [] };
+
+  function money(cents, recurring){
+    if (cents === null || cents === undefined) return '—';
+    const s = (cents / 100).toLocaleString(undefined, { style:'currency', currency:'USD', maximumFractionDigits: 0 });
+    return recurring ? `${s}/mo` : s;
+  }
+
+  function stageMeta(key){
+    return crmData.stages.find(s => s.key === key) || { label: key, tone: 'grey' };
+  }
+
+  function relativeDate(iso){
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d)) return '—';
+    const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (days <= 0) return 'Today';
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days} days ago`;
+    if (days < 30) return `${Math.floor(days/7)} wk ago`;
+    return d.toLocaleDateString(undefined, { month:'short', day:'numeric' });
+  }
+
+  async function loadCrm(){
+    try {
+      crmData = await (await fetch('/api/crm/clients')).json();
+    } catch (err) {
+      document.getElementById('crmRows').innerHTML = '<tr><td colspan="6" class="msg-snippet">Could not load clients.</td></tr>';
+      return;
+    }
+    const filter = document.getElementById('crmFilter');
+    if (filter.options.length <= 1) {
+      filter.innerHTML = '<option value="">All stages</option>'
+        + crmData.stages.map(s => `<option value="${s.key}">${escapeHtml(s.label)}</option>`).join('');
+    }
+    renderCrm();
+  }
+
+  function renderCrm(){
+    const filter = document.getElementById('crmFilter').value;
+    const rows = document.getElementById('crmRows');
+    const list = filter ? crmData.clients.filter(c => c.stage === filter) : crmData.clients;
+
+    const clientCount = crmData.clients.filter(c => c.stage === 'client').length;
+    const pipeline = crmData.clients
+      .filter(c => !['client','lost'].includes(c.stage))
+      .reduce((sum, c) => sum + (c.valueCents || 0), 0);
+    document.getElementById('crmSummary').textContent =
+      `${clientCount} client${clientCount===1?'':'s'} · ${money(pipeline, false)} in open pipeline`;
+
+    if (!list.length) {
+      rows.innerHTML = `<tr><td colspan="6" class="msg-snippet">${crmData.clients.length ? 'None at this stage.' : 'No clients yet — add one to get started.'}</td></tr>`;
+      return;
+    }
+
+    rows.innerHTML = list.map(c => {
+      const meta = stageMeta(c.stage);
+      const primary = c.contacts.find(x => x.isPrimary) || c.contacts[0];
+      return `
+        <tr data-id="${c.id}" style="cursor:pointer;">
+          <td><b>${escapeHtml(c.name)}</b></td>
+          <td><span class="pill ${meta.tone}">${escapeHtml(meta.label)}</span></td>
+          <td>${primary ? escapeHtml(primary.name) : '—'}</td>
+          <td>${c.contacts.length || '—'}</td>
+          <td class="num">${escapeHtml(money(c.valueCents, c.recurring))}</td>
+          <td>${escapeHtml(relativeDate(c.lastTouchAt))}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('crmFilter').addEventListener('change', renderCrm);
+  document.getElementById('crmAdd').addEventListener('click', () => openClientEditor(null));
+  document.getElementById('crmRows').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]');
+    if (!tr) return;
+    openClientEditor(crmData.clients.find(c => c.id === Number(tr.dataset.id)));
+  });
+
+  function openClientEditor(client){
+    const isEdit = !!client;
+    const wrap = document.getElementById('crmEditor');
+    const dollars = client?.valueCents != null ? (client.valueCents / 100) : '';
+
+    wrap.innerHTML = `
+      <div class="cal-editor">
+        <label>Client / lead name</label>
+        <input type="text" id="clName" value="${escapeHtml(client?.name || '')}" placeholder="Acme Logistics">
+        <div class="cols">
+          <div>
+            <label>Stage</label>
+            <select id="clStage" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);">
+              ${crmData.stages.map(s => `<option value="${s.key}" ${client?.stage === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label>Value (USD)</label>
+            <input type="number" id="clValue" value="${dollars}" min="0" step="50" placeholder="4200">
+          </div>
+        </div>
+        <label class="cal-checkbox"><input type="checkbox" id="clRecurring" ${client?.recurring ? 'checked' : ''}> Recurring monthly</label>
+        <label>Notes</label>
+        <textarea id="clNotes" placeholder="Context, history, what they need…">${escapeHtml(client?.notes || '')}</textarea>
+
+        ${isEdit ? `
+        <label style="margin-top:16px;">Contacts</label>
+        <div id="clContacts">${renderContacts(client)}</div>
+        <div class="cols" style="margin-top:8px;">
+          <div><input type="text" id="ctName" placeholder="Name"></div>
+          <div><input type="text" id="ctEmail" placeholder="email@company.com"></div>
+        </div>
+        <div class="cols" style="margin-top:6px;">
+          <div><input type="text" id="ctRole" placeholder="Role (optional)"></div>
+          <div><input type="text" id="ctPhone" placeholder="Phone (optional)"></div>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button type="button" class="btn ghost" id="clAddContact">Add contact</button>
+          <span class="reply-status" id="ctStatus"></span>
+        </div>` : '<p class="msg-snippet" style="margin-top:12px;">Save the client first, then you can add contacts.</p>'}
+
+        <div class="actions">
+          <button type="button" class="btn" id="clSave">${isEdit ? 'Save changes' : 'Add client'}</button>
+          <button type="button" class="btn ghost" id="clCancel">Cancel</button>
+          ${isEdit ? '<button type="button" class="btn ghost" id="clDelete" style="color:var(--red);">Delete</button>' : ''}
+          <span class="reply-status" id="clStatus"></span>
+        </div>
+      </div>`;
+
+    document.getElementById('clName').focus();
+    document.getElementById('clCancel').addEventListener('click', () => { wrap.innerHTML = ''; });
+
+    document.getElementById('clSave').addEventListener('click', async () => {
+      const status = document.getElementById('clStatus');
+      const name = document.getElementById('clName').value.trim();
+      if (!name) { status.textContent = 'Give it a name.'; return; }
+      const rawValue = document.getElementById('clValue').value;
+      const payload = {
+        name,
+        stage: document.getElementById('clStage').value,
+        valueCents: rawValue === '' ? null : Math.round(Number(rawValue) * 100),
+        recurring: document.getElementById('clRecurring').checked,
+        notes: document.getElementById('clNotes').value.trim() || null,
+        lastTouchAt: client?.lastTouchAt || null,
+      };
+      status.textContent = 'Saving…';
+      try {
+        const res = await fetch(isEdit ? `/api/crm/clients/${client.id}` : '/api/crm/clients', {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Could not save.');
+        wrap.innerHTML = '';
+        await loadCrm();
+        if (!isEdit) openClientEditor(crmData.clients.find(c => c.id === d.id));
+      } catch (err) {
+        status.textContent = err.message;
+      }
+    });
+
+    if (isEdit) {
+      document.getElementById('clDelete').addEventListener('click', async () => {
+        if (!confirm(`Delete ${client.name}? Its contacts are deleted too. This can't be undone.`)) return;
+        await fetch(`/api/crm/clients/${client.id}`, { method: 'DELETE' });
+        wrap.innerHTML = '';
+        loadCrm();
+        loadInbox();
+      });
+
+      document.getElementById('clAddContact').addEventListener('click', async () => {
+        const status = document.getElementById('ctStatus');
+        const name = document.getElementById('ctName').value.trim();
+        if (!name) { status.textContent = 'Contact name required.'; return; }
+        status.textContent = 'Adding…';
+        try {
+          const res = await fetch(`/api/crm/clients/${client.id}/contacts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name,
+              email: document.getElementById('ctEmail').value.trim() || null,
+              role: document.getElementById('ctRole').value.trim() || null,
+              phone: document.getElementById('ctPhone').value.trim() || null,
+              isPrimary: !client.contacts.length,
+            }),
+          });
+          if (!res.ok) throw new Error((await res.json()).error || 'Could not add.');
+          await loadCrm();
+          openClientEditor(crmData.clients.find(c => c.id === client.id));
+          loadInbox();
+        } catch (err) {
+          status.textContent = err.message;
+        }
+      });
+
+      document.getElementById('clContacts').addEventListener('click', async (e) => {
+        const del = e.target.closest('.ct-del');
+        if (!del) return;
+        await fetch(`/api/crm/contacts/${del.dataset.id}`, { method: 'DELETE' });
+        await loadCrm();
+        openClientEditor(crmData.clients.find(c => c.id === client.id));
+        loadInbox();
+      });
+    }
+  }
+
+  function renderContacts(client){
+    if (!client.contacts.length) return '<p class="msg-snippet">No contacts yet.</p>';
+    return client.contacts.map(ct => `
+      <div class="int-row">
+        <span>
+          <b>${escapeHtml(ct.name)}</b>${ct.isPrimary ? ' <span class="pill brand">primary</span>' : ''}
+          ${ct.role ? `<span class="msg-snippet"> · ${escapeHtml(ct.role)}</span>` : ''}<br>
+          <span class="msg-snippet">${escapeHtml(ct.email || 'no email')}${ct.phone ? ' · ' + escapeHtml(ct.phone) : ''}</span>
+        </span>
+        <button type="button" class="int-btn connected ct-del" data-id="${ct.id}">Remove</button>
+      </div>`).join('');
+  }
+
   // --- Scheduling ---
-  const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const WEEKDAYS =['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   let schConfig = { eventTypes: [], availability: [], timezone: 'UTC', baseUrl: '' };
 
   function minutesToTime(m){
@@ -1564,6 +1795,7 @@
     loadCalendly();
     loadGoogle();
     loadScheduling();
+    loadCrm();
 
     const params = new URLSearchParams(location.search);
     if (params.get('googleConnected')) {

@@ -15,6 +15,7 @@ const calendar = require('./lib/calendar');
 const calendly = require('./lib/calendly');
 const google = require('./lib/google');
 const scheduling = require('./lib/scheduling');
+const crm = require('./lib/crm');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -334,6 +335,20 @@ app.get('/api/inbox', async (req, res) => {
 
     const messages = perAccount.flat().sort((a, b) =>
       new Date(b.receivedDateTime || 0) - new Date(a.receivedDateTime || 0));
+
+    // Label senders that match a known contact, so client mail is
+    // identifiable without anyone tagging it by hand. A CRM lookup
+    // failure must not take the inbox down with it.
+    try {
+      const matches = await crm.matchEmails(messages.map((m) => m.fromAddress));
+      for (const m of messages) {
+        const hit = matches[(m.fromAddress || '').toLowerCase()];
+        if (hit) m.client = { id: hit.clientId, name: hit.clientName, stage: hit.stage };
+      }
+    } catch (err) {
+      console.error('CRM sender lookup failed:', err.message);
+    }
+
     res.json({ accounts, messages, errors });
   } catch (err) {
     console.error('Failed to load inbox:', err);
@@ -451,6 +466,72 @@ app.delete('/api/calendar/events/:id', async (req, res) => {
     console.error('Failed to delete event:', err);
     res.status(500).json({ error: 'Could not delete the event.' });
   }
+});
+
+// --- CRM ---
+
+app.get('/api/crm/clients', async (req, res) => {
+  try {
+    res.json({ stages: crm.STAGES, clients: await crm.listClients() });
+  } catch (err) {
+    console.error('Failed to list clients:', err);
+    res.status(500).json({ error: 'Could not load clients.' });
+  }
+});
+
+app.post('/api/crm/clients', express.json(), async (req, res) => {
+  if (!req.body?.name) return res.status(400).json({ error: 'A name is required.' });
+  try {
+    res.status(201).json(await crm.createClient(req.body));
+  } catch (err) {
+    console.error('Failed to create client:', err);
+    res.status(500).json({ error: 'Could not create that client.' });
+  }
+});
+
+app.patch('/api/crm/clients/:id', express.json(), async (req, res) => {
+  try {
+    const updated = await crm.updateClient(Number(req.params.id), req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Not found.' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Failed to update client:', err);
+    res.status(500).json({ error: 'Could not update that client.' });
+  }
+});
+
+app.delete('/api/crm/clients/:id', async (req, res) => {
+  const removed = await crm.deleteClient(Number(req.params.id));
+  if (!removed) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
+});
+
+app.post('/api/crm/clients/:id/contacts', express.json(), async (req, res) => {
+  if (!req.body?.name) return res.status(400).json({ error: 'A contact name is required.' });
+  try {
+    res.status(201).json(await crm.createContact(Number(req.params.id), req.body));
+  } catch (err) {
+    if (err.code === '23503') return res.status(404).json({ error: 'That client no longer exists.' });
+    console.error('Failed to create contact:', err);
+    res.status(500).json({ error: 'Could not add that contact.' });
+  }
+});
+
+app.patch('/api/crm/contacts/:id', express.json(), async (req, res) => {
+  try {
+    const updated = await crm.updateContact(Number(req.params.id), req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Not found.' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Failed to update contact:', err);
+    res.status(500).json({ error: 'Could not update that contact.' });
+  }
+});
+
+app.delete('/api/crm/contacts/:id', async (req, res) => {
+  const removed = await crm.deleteContact(Number(req.params.id));
+  if (!removed) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
 });
 
 // --- Scheduling admin ---
