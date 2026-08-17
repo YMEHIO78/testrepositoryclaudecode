@@ -587,24 +587,23 @@
     <!-- ================= FINANCE ================= -->
     <div class="view hidden" id="view-finance">
       <h1>Finance</h1>
-      <p class="sub">Wave is the ledger — the app is the view. Invoices and expenses are entered in Wave and mirrored here so they sit beside the client and project they belong to. Nothing is double-entered.</p>
-      <div class="grid cols-4">
-        <div class="card"><h3>Revenue YTD</h3><div class="stat">$48,900</div><div class="stat-note">+34% on 2025</div></div>
-        <div class="card"><h3>Expenses YTD</h3><div class="stat">$14,600</div><div class="stat-note">62% contractor cost</div></div>
-        <div class="card"><h3>Net margin</h3><div class="stat">71%</div><div class="stat-note">$34,300 retained</div></div>
-        <div class="card"><h3>Forecast 90d</h3><div class="stat">$27,600</div><div class="stat-note">retainers + weighted pipeline</div></div>
+      <p class="sub">Wave is the ledger; this is the view. Invoices are read live from Wave — nothing is entered here.</p>
+
+      <div class="stat-strip" id="finStats"></div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin:18px 0 12px;flex-wrap:wrap;">
+        <button type="button" class="btn ghost" id="finRefresh">Refresh</button>
+        <span class="msg-snippet" id="finMeta"></span>
       </div>
-      <div class="card" style="margin-top:14px;">
-        <div class="panel-title"><h3>Invoices</h3></div>
+
+      <div class="card">
         <table>
-          <thead><tr><th>Invoice</th><th>Client</th><th>Amount</th><th>Issued</th><th>Due</th><th>Status</th></tr></thead>
-          <tbody>
-            <tr><td class="num">INV-2044</td><td>Hatcher &amp; Co.</td><td class="num">$4,200</td><td>1 Aug</td><td>31 Aug</td><td><span class="pill green">Sent</span></td></tr>
-            <tr><td class="num">INV-2045</td><td>Ridgeline Dental</td><td class="num">$2,600</td><td>5 Aug</td><td>4 Sep</td><td><span class="pill amber">Draft</span></td></tr>
-          </tbody>
+          <thead><tr><th>Invoice</th><th>Customer</th><th>Status</th><th>Invoiced</th><th>Due</th><th>Total</th><th>Outstanding</th></tr></thead>
+          <tbody id="finRows"><tr><td colspan="7" class="msg-snippet">Loading…</td></tr></tbody>
         </table>
       </div>
-      <div class="note">Sync runs one way, Wave → the app, on an hourly schedule. Amounts are entered once, in Wave, and never reconciled here.</div>
+
+      <div class="note" id="finNote">Expenses aren't pulled yet — only invoices. Connect or manage the Wave link under <a href="#" data-goto="integrations">Integrations</a>.</div>
     </div>
 
     <!-- ================= PEOPLE ================= -->
@@ -664,8 +663,8 @@
 
       <div class="card">
         <h3 style="margin-bottom:2px;">Wave</h3>
-        <p class="msg-snippet" style="margin-bottom:12px;">Accounting · invoices, expenses</p>
-        <div class="int-row"><span class="msg-snippet">Not built yet — see <a href="#" data-goto="spec">System spec</a> for the plan.</span></div>
+        <p class="msg-snippet" style="margin-bottom:12px;">Accounting · reads invoices into <a href="#" data-goto="finance">Finance</a> and the dashboard's cash panel. Read-only — nothing is written back to Wave.</p>
+        <div id="intWave"><div class="int-row"><span class="msg-snippet">Loading…</span></div></div>
       </div>
     </div>
 
@@ -861,6 +860,189 @@
     }
   }
 
+  // --- Wave connection (Integrations panel) ---
+  async function loadWave(){
+    const wrap = document.getElementById('intWave');
+    if (!wrap) return;
+    let s;
+    try {
+      s = await (await fetch('/api/wave/status')).json();
+    } catch (err) {
+      wrap.innerHTML = '<div class="int-row"><span class="msg-snippet">Wave status unavailable.</span></div>';
+      return;
+    }
+
+    if (!s.connected) {
+      wrap.innerHTML = `
+        <div class="int-row">
+          <span>Not connected</span>
+          <button type="button" class="int-btn disconnected" id="wvConnect">Connect</button>
+        </div>`;
+      document.getElementById('wvConnect').addEventListener('click', openWaveConnect);
+      return;
+    }
+
+    const options = (s.businesses || []).map(b =>
+      `<option value="${escapeHtml(b.id)}" ${b.id === s.businessId ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('');
+
+    wrap.innerHTML = `
+      <div class="int-row">
+        <span>${s.error ? 'Token stored, but Wave rejected it' : escapeHtml(s.email || 'Connected')}</span>
+        <button type="button" class="int-btn connected" id="wvDisconnect">${s.error ? 'Remove' : 'Connected'}</button>
+      </div>
+      ${s.error ? `<div class="int-row"><span class="msg-snippet" style="color:var(--red);">${escapeHtml(s.error)}</span></div>` : ''}
+      ${s.viaEnv ? '<div class="int-row"><span class="msg-snippet">Token supplied via the WAVE_TOKEN environment variable.</span></div>' : ''}
+      ${options ? `
+      <div class="int-row">
+        <span class="msg-snippet">Business</span>
+        <select id="wvBusiness" style="padding:5px 8px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);">
+          ${s.businessId ? '' : '<option value="">— pick one —</option>'}${options}
+        </select>
+      </div>` : ''}
+      <div class="int-row"><span class="msg-snippet" id="wvStatus"></span></div>`;
+
+    document.getElementById('wvDisconnect').addEventListener('click', async () => {
+      if (!confirm('Disconnect Wave? The stored token is deleted. Nothing changes in Wave itself.')) return;
+      await fetch('/api/wave/disconnect', { method: 'POST' });
+      loadWave();
+      loadFinance();
+    });
+
+    document.getElementById('wvBusiness')?.addEventListener('change', async (e) => {
+      const st = document.getElementById('wvStatus');
+      st.textContent = 'Saving…';
+      try {
+        const r = await fetch('/api/wave/business', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ businessId: e.target.value }),
+        });
+        if (!r.ok) throw new Error((await r.json()).error || 'Could not save.');
+        st.textContent = 'Saved.';
+        loadFinance();
+      } catch (err) {
+        st.textContent = err.message;
+      }
+    });
+  }
+
+  function openWaveConnect(){
+    const modal = openModal({
+      kicker: 'Wave',
+      title: 'Connect Wave',
+      body: `
+        <label>Full access token</label>
+        <input type="password" id="wvToken" autocomplete="new-password" placeholder="Paste token">
+        <p class="msg-snippet" style="margin-top:var(--space-2);">
+          Create one at Wave's Developer Portal → Manage Applications → Full Access Token.
+          It's validated before being stored, and kept encrypted.
+        </p>
+        <p class="msg-snippet" style="margin-top:var(--space-2);">
+          A full access token reads your own business without needing Wave's paid tier;
+          OAuth would. If your plan blocks it, Wave's own error will show here.
+        </p>`,
+      actions: actionButtons('Connect'),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const token = document.getElementById('wvToken').value.trim();
+      if (!token) { modalStatus('Paste the token first.'); return; }
+      modalStatus('Checking token…');
+      try {
+        const r = await fetch('/api/wave/connect', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'Could not connect.');
+        closeModal();
+        showBanner(`Connected Wave (${d.email || 'account'}).`
+          + (d.businesses.length > 1 ? ' Pick which business to read.' : ''), 'ok');
+        loadWave();
+        loadFinance();
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
+  }
+
+  // --- Finance (Wave) ---
+  let finData = { connected: false };
+
+  const INVOICE_TONE = {
+    PAID: 'green', OVERPAID: 'green',
+    OVERDUE: 'red',
+    PARTIAL: 'amber', SENT: 'amber', VIEWED: 'amber', UNPAID: 'amber',
+    DRAFT: 'grey', SAVED: 'grey',
+  };
+
+  async function loadFinance(){
+    const rows = document.getElementById('finRows');
+    if (!rows) return;
+    try {
+      finData = await (await fetch('/api/finance')).json();
+    } catch (err) {
+      finData = { connected: false, error: 'Could not reach the server.' };
+    }
+    renderFinance();
+    renderDashboard();
+  }
+
+  function renderFinance(){
+    const rows = document.getElementById('finRows');
+    const stats = document.getElementById('finStats');
+    const meta = document.getElementById('finMeta');
+
+    if (!finData.connected) {
+      stats.innerHTML = '';
+      rows.innerHTML = '<tr><td colspan="7" class="msg-snippet">Wave isn\'t connected — add a token under Integrations.</td></tr>';
+      meta.textContent = '';
+      return;
+    }
+    if (finData.error) {
+      stats.innerHTML = '';
+      rows.innerHTML = `<tr><td colspan="7" class="msg-snippet" style="color:var(--red);">${escapeHtml(finData.error)}</td></tr>`;
+      meta.textContent = '';
+      return;
+    }
+
+    const s = finData.summary;
+    stats.innerHTML = `
+      <div class="stat-cell">
+        <span class="label">Awaiting payment</span>
+        <span class="value accent">${escapeHtml(money(s.awaitingCents, false))}</span>
+        <span class="note">${s.outstandingCount} open invoice${s.outstandingCount===1?'':'s'}</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Overdue</span>
+        <span class="value" style="${s.overdueCents ? 'color:var(--color-accent-2);' : ''}">${escapeHtml(money(s.overdueCents, false))}</span>
+        <span class="note">past due or 30+ days late</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Drafts</span>
+        <span class="value">${escapeHtml(money(s.draftCents, false))}</span>
+        <span class="note">not yet sent</span>
+      </div>`;
+
+    meta.textContent = `${finData.invoices.length} of ${finData.totalCount} invoice(s)`
+      + (finData.businessName ? ` · ${finData.businessName}` : '');
+
+    rows.innerHTML = finData.invoices.length
+      ? finData.invoices.map(i => `
+        <tr>
+          <td class="num">${i.viewUrl ? `<a href="${escapeHtml(i.viewUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(i.number || i.id)}</a>` : escapeHtml(i.number || i.id)}</td>
+          <td>${escapeHtml(i.customer || '—')}</td>
+          <td><span class="pill ${INVOICE_TONE[i.status] || 'grey'}">${escapeHtml((i.status || '').toLowerCase())}</span></td>
+          <td>${escapeHtml(i.invoiceDate || '—')}</td>
+          <td>${escapeHtml(i.dueDate || '—')}</td>
+          <td class="num">${escapeHtml(money(i.totalCents, false))}</td>
+          <td class="num">${i.dueCents ? escapeHtml(money(i.dueCents, false)) : '—'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="7" class="msg-snippet">No invoices in Wave yet.</td></tr>';
+  }
+
+  document.getElementById('finRefresh')?.addEventListener('click', loadFinance);
+
   // --- Dashboard ---
   // Composed from state the other views already loaded rather than its own
   // endpoint, so opening the app doesn't trigger a second round of IMAP and
@@ -911,9 +1093,12 @@
         <span class="note">across ${inboxData.accounts.length} connected inbox${inboxData.accounts.length===1?'':'es'}</span>
       </div>
       <div class="stat-cell">
-        <span class="label">Unbilled</span>
-        <span class="value">—</span>
-        <span class="note">needs an accounting integration</span>
+        <span class="label">Awaiting payment</span>
+        <span class="value">${finData.connected && finData.summary
+          ? escapeHtml(money(finData.summary.awaitingCents, false)) : '—'}</span>
+        <span class="note">${finData.connected && finData.summary
+          ? `${finData.summary.outstandingCount} open invoice${finData.summary.outstandingCount===1?'':'s'}`
+          : 'Wave not connected'}</span>
       </div>`;
 
     document.getElementById('dashStats2').innerHTML = `
@@ -992,15 +1177,21 @@
         }).join('')
       : '<p class="msg-snippet">No clients yet.</p>';
 
-    // Cash position stays empty rather than inventing figures — there's no
-    // accounting integration yet, and plausible-looking numbers here would
-    // be worse than a blank.
+    // Real figures once Wave is connected; blanks otherwise. Rows with no
+    // data source stay blank rather than being estimated — an obvious gap
+    // beats a plausible-looking invention on a panel you'd act on.
+    const s = finData.connected && finData.summary ? finData.summary : null;
     document.getElementById('dashCash').innerHTML = `
-      <div class="cash-row"><span class="k">Invoiced, awaiting payment</span><span class="v">—</span></div>
-      <div class="cash-row"><span class="k">Overdue &gt; 30 days</span><span class="v">—</span></div>
+      <div class="cash-row"><span class="k">Invoiced, awaiting payment</span>
+        <span class="v accent">${s ? escapeHtml(money(s.awaitingCents, false)) : '—'}</span></div>
+      <div class="cash-row"><span class="k">Overdue</span>
+        <span class="v ${s && s.overdueCents ? 'warn' : ''}">${s ? escapeHtml(money(s.overdueCents, false)) : '—'}</span></div>
+      <div class="cash-row"><span class="k">Draft invoices</span>
+        <span class="v">${s ? escapeHtml(money(s.draftCents, false)) : '—'}</span></div>
       <div class="cash-row"><span class="k">Expenses this month</span><span class="v">—</span></div>
-      <div class="cash-row"><span class="k">Forecast, next 90 days</span><span class="v">—</span></div>
-      <p class="msg-snippet" style="margin-top:10px;">No accounting integration connected, so these are blank rather than estimated. Wiring up Wave would fill them.</p>`;
+      ${s
+        ? '<p class="msg-snippet" style="margin-top:10px;">Live from Wave. Expenses aren\'t pulled yet, so that row stays blank.</p>'
+        : '<p class="msg-snippet" style="margin-top:10px;">Wave isn\'t connected, so these are blank rather than estimated.</p>'}`;
   }
 
   // Dashboard rows jump to the relevant view, opening the exact record.
@@ -2524,6 +2715,8 @@
     loadFeedUrl();
     loadCalendly();
     loadGoogle();
+    loadWave();
+    loadFinance();
     loadScheduling();
     // CRM before tickets: the ticket editor's client dropdown reads from it.
     loadCrm().then(loadTickets);

@@ -245,6 +245,35 @@ Mechanics worth knowing:
   synced events, so they can't be edited into an inconsistent state.
   Cancel them through Scheduling rather than deleting the calendar entry.
 
+## Wave (accounting)
+
+Reads invoices from Wave into the **Finance** view and the dashboard's
+cash panel. **Read-only** — nothing is ever written back to Wave.
+
+Connect under **Integrations** with a **Full Access Token** from Wave's
+Developer Portal (Manage Applications), or set `WAVE_TOKEN` in Railway
+to keep it out of the browser. If several businesses are visible, pick
+which one to read.
+
+**Why a token rather than OAuth:** Wave's OAuth flow requires the end
+user's business to be on a paid plan (Pro or Wave Advisor). A Full
+Access Token reads your own business without that. If your plan does
+block it, the connect dialog surfaces Wave's own error rather than
+failing silently.
+
+Implementation notes:
+
+- Query shapes were confirmed against Wave's live schema by
+  introspection rather than guessed. Two things that matter: Wave
+  **rejects inline string arguments** (everything must go through
+  GraphQL variables), and `Money.minorUnitValue` is already in cents,
+  which matches how this app stores money everywhere else.
+- Statuses come from Wave's `InvoiceStatus` enum (`DRAFT`, `SENT`,
+  `VIEWED`, `PARTIAL`, `UNPAID`, `OVERDUE`, `PAID`, `OVERPAID`,
+  `SAVED`).
+- **Expenses aren't pulled**, only invoices — so the "Expenses this
+  month" row stays blank rather than being estimated.
+
 ## Google Calendar (double-booking prevention)
 
 *Optional if you use the built-in scheduler above — that already
@@ -350,6 +379,7 @@ lib/google.js           Google Calendar bridge (mirrors events so Calendly sees 
 lib/scheduling.js       booking pages: availability, slot maths, bookings
 lib/crm.js              clients, contacts, and inbox sender matching
 lib/tickets.js          service desk, including SLA-to-calendar projection
+lib/wave.js             Wave GraphQL client: invoices into Finance
 package.json
 .env.example          placeholders for the secrets you'll need
 ```

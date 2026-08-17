@@ -17,6 +17,7 @@ const google = require('./lib/google');
 const scheduling = require('./lib/scheduling');
 const crm = require('./lib/crm');
 const tickets = require('./lib/tickets');
+const wave = require('./lib/wave');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -603,6 +604,74 @@ app.delete('/api/crm/contacts/:id', async (req, res) => {
   const removed = await crm.deleteContact(Number(req.params.id));
   if (!removed) return res.status(404).json({ error: 'Not found.' });
   res.status(204).end();
+});
+
+// --- Wave (accounting) ---
+
+app.get('/api/wave/status', async (req, res) => {
+  try {
+    const creds = await wave.loadCredentials();
+    if (!creds) return res.json({ connected: false });
+    const { email, businesses } = await wave.listBusinesses(creds.token);
+    res.json({
+      connected: true,
+      email,
+      businesses,
+      businessId: creds.businessId,
+      viaEnv: !!process.env.WAVE_TOKEN,
+    });
+  } catch (err) {
+    // A stored-but-rejected token is "connected but broken" — report the
+    // reason (often a plan restriction) rather than a clean disconnected state.
+    res.json({ connected: true, error: err.message });
+  }
+});
+
+app.post('/api/wave/connect', express.json(), async (req, res) => {
+  const { token } = req.body || {};
+  if (!token) return res.status(400).json({ error: 'A full access token is required.' });
+  try {
+    const { email, businesses } = await wave.listBusinesses(token); // validate first
+    if (!businesses.length) {
+      return res.status(400).json({ error: 'That token works, but no active Wave business is visible on it.' });
+    }
+    await wave.saveToken(token, businesses.length === 1 ? businesses[0].id : null);
+    res.json({ email, businesses });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/wave/business', express.json(), async (req, res) => {
+  if (!req.body?.businessId) return res.status(400).json({ error: 'businessId is required.' });
+  try {
+    await wave.setBusiness(req.body.businessId);
+    res.status(204).end();
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/wave/disconnect', async (req, res) => {
+  await wave.disconnect();
+  res.status(204).end();
+});
+
+app.get('/api/finance', async (req, res) => {
+  try {
+    const result = await wave.fetchInvoices({ pageSize: 100 });
+    if (!result) return res.json({ connected: false });
+    res.json({
+      connected: true,
+      businessName: result.businessName,
+      totalCount: result.totalCount,
+      invoices: result.invoices,
+      summary: wave.summarise(result.invoices),
+    });
+  } catch (err) {
+    console.error('Failed to load Wave invoices:', err.message);
+    res.status(502).json({ connected: true, error: err.message });
+  }
 });
 
 // --- Service desk ---
