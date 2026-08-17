@@ -7,56 +7,100 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ink:#1c1a1c;
-    --paper:#f3f1ec;
-    --panel:#ffffff;
-    --line:#e2ddd2;
-    --muted:#8a8683;
-    --brand:#1800ad;
-    --brand-soft:#e9e6fb;
-    --amber:#b9711f;
-    --amber-soft:#faf1e2;
+    /* Palette, type and spacing taken from the reference design:
+       cool greys, a teal accent with magenta as the second accent,
+       serif throughout, and near-sharp corners. */
+    --color-bg:#f3f2f2;
+    --color-surface:#eae9e9;
+    --color-text:#201e1d;
+    --color-accent:#0088b0;
+    --color-accent-100:#e9f8ff;
+    --color-accent-700:#006786;
+    --color-accent-2:#d6006c;
+    --color-accent-2-100:#fff1f4;
+    --color-accent-2-700:#aa0b56;
+    --color-process-yellow:#edbb00;
+    --color-neutral-100:#f8f4f4;
+    --color-neutral-200:#eae7e7;
+    --color-neutral-300:#d7d3d3;
+    --color-neutral-400:#bab6b6;
+    --color-neutral-500:#9b9797;
+    --color-neutral-600:#7d7979;
+    --color-neutral-900:#2d2b2b;
+    --color-divider:color-mix(in srgb, #201e1d 16%, transparent);
+
+    --radius-sm:1px;
+    --radius-md:2px;
+    --radius-lg:4px;
+
+    --space-1:5px;  --space-2:10px; --space-3:15px;
+    --space-4:20px; --space-6:30px; --space-8:40px;
+
+    --font-body:"Source Serif 4", Georgia, serif;
+    --font-heading:"Source Serif 4", Georgia, serif;
+    --font-heading-weight:600;
+    --font-mono:ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    --shadow-sm:0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
+    --shadow-md:0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
+    --shadow-lg:0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+
+    /* Existing component rules refer to these names; repointing them at
+       the new palette restyles the whole app without touching every rule. */
+    --ink:var(--color-text);
+    --paper:var(--color-bg);
+    --panel:var(--color-neutral-100);
+    --line:var(--color-divider);
+    --muted:var(--color-neutral-600);
+    --brand:var(--color-accent);
+    --brand-soft:var(--color-accent-100);
+    --amber:#8a6a00;
+    --amber-soft:#fdf3d6;
     --green:#1f7a4d;
     --green-soft:#e6f4ec;
-    --red:#b23a2f;
-    --red-soft:#fbe9e6;
-    --radius:10px;
+    --red:var(--color-accent-2-700);
+    --red-soft:var(--color-accent-2-100);
+    --radius:var(--radius-lg);
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;font-size:14px;line-height:1.5;}
-  code,.mono,.num{font-family:'IBM Plex Mono',monospace;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.55;font-weight:400;}
+  h1,h2,h3,h4{font-family:var(--font-heading);font-weight:var(--font-heading-weight);}
+  code,.mono,.num{font-family:var(--font-mono);}
   a{color:var(--brand);text-decoration:none;}
   a:hover{text-decoration:underline;}
   button{font-family:inherit;cursor:pointer;}
 
   /* Shell */
   .shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh;}
-  .rail{background:var(--brand);color:#f3f2fa;padding:20px 14px;display:flex;flex-direction:column;gap:18px;}
-  .brand{font-family:'IBM Plex Mono',monospace;font-weight:600;letter-spacing:.5px;font-size:13px;line-height:1.3;padding:0 6px;}
-  .brand small{display:block;color:#b9a9ff;font-weight:400;letter-spacing:2px;font-size:10px;margin-top:2px;}
+  .rail{background:var(--color-neutral-900);color:var(--color-neutral-200);padding:var(--space-4) var(--space-3);display:flex;flex-direction:column;gap:var(--space-3);}
+  .brand{font-family:var(--font-heading);font-weight:var(--font-heading-weight);letter-spacing:.02em;font-size:18px;line-height:1.25;padding:0 6px;color:#fff;}
+  .brand small{display:block;color:var(--color-neutral-400);font-weight:400;letter-spacing:2px;font-size:10px;margin-top:2px;}
   .nav-group{display:flex;flex-direction:column;gap:2px;}
-  .nav-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#a89ae0;padding:10px 10px 4px;}
-  .nav-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;background:none;border:none;color:#e7e3fb;text-align:left;padding:8px 10px;border-radius:8px;font-size:13px;}
+  .nav-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--color-neutral-500);padding:10px 10px 4px;}
+  .nav-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;background:none;border:none;color:var(--color-neutral-300);text-align:left;padding:7px 10px;border-radius:var(--radius-md);font-size:14px;font-family:inherit;}
   .nav-btn:hover{background:rgba(255,255,255,.08);}
-  .nav-btn.active{background:#fff;color:var(--brand);font-weight:600;}
-  .nav-badge{font-family:'IBM Plex Mono',monospace;font-size:10px;background:rgba(255,255,255,.16);padding:1px 6px;border-radius:10px;}
+  .nav-btn.active{background:var(--color-accent);color:#fff;font-weight:600;}
+  .nav-badge{font-family:var(--font-mono);font-size:10px;background:rgba(255,255,255,.16);padding:1px 6px;border-radius:var(--radius-lg);}
   .nav-btn.active .nav-badge{background:var(--brand-soft);color:var(--brand);}
-  .rail-foot{margin-top:auto;font-size:11px;color:#b9a9ff;padding:0 10px;}
-  .logout-btn{background:none;border:none;color:#b9a9ff;text-decoration:underline;cursor:pointer;font-size:11px;padding:0;margin-top:6px;font-family:inherit;}
+  .rail-foot{margin-top:auto;font-size:11px;color:var(--color-neutral-400);padding:0 10px;}
+  .logout-btn{background:none;border:none;color:var(--color-neutral-400);text-decoration:underline;cursor:pointer;font-size:11px;padding:0;margin-top:6px;font-family:inherit;}
   .logout-btn:hover{color:#fff;}
 
   .main{display:flex;flex-direction:column;min-height:100vh;}
-  .topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--line);background:var(--panel);}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:var(--space-2) var(--space-4);border-bottom:1px solid var(--line);background:var(--panel);}
   .crumb{font-size:12px;color:var(--muted);}
   .crumb b{color:var(--ink);}
   .connected{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);}
-  .dot{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;margin-right:5px;}
-  .chip{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;}
+  .dot{width:6px;height:6px;border-radius:var(--radius-md);background:var(--green);display:inline-block;margin-right:5px;}
+  .chip{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-md);padding:3px 10px;font-family:var(--font-mono);font-size:10.5px;}
 
   .view{padding:24px 28px 60px;max-width:1180px;}
-  .view h1{font-size:22px;margin:0 0 4px;}
+  .view h1{font-size:34px;margin:0 0 6px;letter-spacing:-.01em;}
   .view .sub{color:var(--muted);font-size:13px;margin:0 0 22px;}
 
   .grid{display:grid;gap:14px;}
@@ -65,9 +109,9 @@
   .cols-2{grid-template-columns:1fr 1fr;}
   @media (max-width:900px){.cols-4,.cols-3,.cols-2{grid-template-columns:1fr;}}
 
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);padding:var(--space-3);box-shadow:var(--shadow-sm);}
   .card h3{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 8px;font-weight:600;}
-  .stat{font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:600;}
+  .stat{font-family:var(--font-mono);font-size:26px;font-weight:600;}
   .stat-note{font-size:12px;color:var(--muted);margin-top:2px;}
 
   table{width:100%;border-collapse:collapse;font-size:13px;}
@@ -76,7 +120,7 @@
   tr:last-child td{border-bottom:none;}
   tr:hover td{background:#faf9f6;}
 
-  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;}
+  .pill{display:inline-block;padding:2px 9px;border-radius:var(--radius-md);font-size:11px;font-weight:600;}
   .pill.green{background:var(--green-soft);color:var(--green);}
   .pill.amber{background:var(--amber-soft);color:var(--amber);}
   .pill.red{background:var(--red-soft);color:var(--red);}
@@ -85,12 +129,12 @@
 
   .panel-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
   .panel-title h3{margin:0;font-size:13px;text-transform:none;letter-spacing:0;color:var(--ink);font-weight:600;}
-  .note{font-size:12.5px;color:var(--muted);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:14px 0;}
+  .note{font-size:12.5px;color:var(--muted);background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-lg);padding:10px 12px;margin:14px 0;}
   .note b{color:var(--ink);}
 
   .msg{display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--line);}
   .msg:last-child{border-bottom:none;}
-  .avatar{width:30px;height:30px;border-radius:50%;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
+  .avatar{width:30px;height:30px;border-radius:var(--radius-md);background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
   .msg-meta{font-size:11.5px;color:var(--muted);}
   .msg-subject{font-weight:600;font-size:13px;margin:2px 0;}
   .msg-snippet{font-size:12.5px;color:var(--muted);}
@@ -99,18 +143,18 @@
   .msg-row:last-child{border-bottom:none;}
   .msg-row-top{display:flex;gap:10px;align-items:flex-start;}
   .msg-actions{display:flex;gap:6px;flex-shrink:0;}
-  .msg-actions button{background:none;border:1px solid var(--line);border-radius:7px;padding:5px 10px;font-size:11.5px;color:var(--ink);cursor:pointer;}
+  .msg-actions button{background:none;border:1px solid var(--line);border-radius:var(--radius-md);padding:5px 10px;font-size:11.5px;color:var(--ink);cursor:pointer;}
   .msg-actions button:hover{background:var(--paper);}
   .reply-box{margin:10px 0 0 40px;display:flex;flex-direction:column;gap:6px;}
-  .reply-box textarea{width:100%;min-height:70px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);resize:vertical;}
+  .reply-box textarea{width:100%;min-height:70px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-lg);font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);resize:vertical;}
   .reply-box .row{display:flex;gap:8px;align-items:center;}
   .reply-status{font-size:11.5px;color:var(--muted);}
   .msg-row.open{background:#fbfaf7;}
-  .msg-body{margin:10px 0 0 40px;padding:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px;}
+  .msg-body{margin:10px 0 0 40px;padding:12px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-lg);}
   .msg-body pre{white-space:pre-wrap;word-wrap:break-word;font-family:inherit;font-size:13px;margin:0;max-height:420px;overflow-y:auto;}
-  .msg-body iframe{width:100%;height:420px;border:1px solid var(--line);border-radius:6px;background:#fff;}
+  .msg-body iframe{width:100%;height:420px;border:1px solid var(--line);border-radius:var(--radius-md);background:#fff;}
   .msg-toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
-  .msg-toolbar button{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:5px 10px;font-size:11.5px;color:var(--ink);cursor:pointer;font-family:inherit;}
+  .msg-toolbar button{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-md);padding:5px 10px;font-size:11.5px;color:var(--ink);cursor:pointer;font-family:inherit;}
   .msg-toolbar button:hover{border-color:var(--brand);color:var(--brand);}
   .msg-attach{margin-top:8px;font-size:11.5px;color:var(--muted);}
   .body-toggle{margin-left:auto;}
@@ -118,30 +162,30 @@
   .int-label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600;margin-bottom:4px;}
   .int-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);}
   .int-row:last-child{border-bottom:none;}
-  .int-btn{border:none;border-radius:20px;padding:5px 14px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;}
+  .int-btn{border:none;border-radius:var(--radius-md);padding:5px 14px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;}
   .int-btn.connected{background:var(--green-soft);color:var(--green);}
   .int-btn.connected:hover{background:var(--red-soft);color:var(--red);}
   .int-btn.disconnected{background:var(--brand);color:#fff;}
-  .connect-form{padding:12px;margin:4px 0 10px;background:var(--paper);border:1px solid var(--line);border-radius:8px;}
+  .connect-form{padding:12px;margin:4px 0 10px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-lg);}
   .connect-form label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:10px 0 4px;font-weight:600;}
   .connect-form label:first-child{margin-top:0;}
   .connect-form label .msg-snippet{text-transform:none;letter-spacing:0;font-weight:400;}
-  .connect-form input{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--panel);color:var(--ink);}
+  .connect-form input{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--panel);color:var(--ink);}
   .connect-form .row{display:flex;gap:8px;align-items:center;}
   .cf-advanced{margin-top:4px;}
 
-  .btn{display:inline-flex;align-items:center;gap:6px;background:var(--brand);color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;}
-  .btn.ghost{background:none;border:1px solid var(--line);color:var(--ink);}
+  .btn{display:inline-flex;align-items:center;gap:6px;background:var(--color-accent);color:var(--color-bg);border:1px solid transparent;border-radius:var(--radius-md);padding:7px 14px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;min-height:36px;}
+  .btn.ghost{background:none;border-color:var(--color-divider);color:var(--ink);}
   .btn.small{padding:5px 10px;font-size:11.5px;}
 
-  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;}
   .cal-day{background:var(--panel);min-height:88px;padding:6px;font-size:11px;}
-  .cal-day .d{color:var(--muted);font-family:'IBM Plex Mono',monospace;}
-  .cal-ev{background:var(--brand-soft);color:var(--brand);border-radius:4px;padding:2px 5px;font-size:10.5px;margin-top:3px;}
+  .cal-day .d{color:var(--muted);font-family:var(--font-mono);}
+  .cal-ev{background:var(--brand-soft);color:var(--brand);border-radius:var(--radius-md);padding:2px 5px;font-size:10.5px;margin-top:3px;}
   .cal-head{background:var(--paper);text-align:center;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);padding:6px 0;font-weight:600;}
   .cal-day.outside{background:var(--paper);}
   .cal-day.outside .d{opacity:.45;}
-  .cal-day.today .d{background:var(--brand);color:#fff;border-radius:4px;padding:1px 5px;}
+  .cal-day.today .d{background:var(--brand);color:#fff;border-radius:var(--radius-md);padding:1px 5px;}
   .cal-day{cursor:pointer;}
   .cal-day:hover{background:#faf9f6;}
   .cal-ev{cursor:pointer;text-align:left;display:block;width:100%;border:none;font-family:inherit;}
@@ -149,10 +193,10 @@
   .cal-ev.synced{background:var(--green-soft);color:var(--green);}
   .cal-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
   .cal-toolbar b{min-width:150px;text-align:center;}
-  .cal-editor{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:12px;}
+  .cal-editor{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);padding:14px;margin-bottom:12px;}
   .cal-editor label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:10px 0 4px;font-weight:600;}
   .cal-editor label:first-child{margin-top:0;}
-  .cal-editor input[type=text],.cal-editor input[type=datetime-local],.cal-editor input[type=date],.cal-editor textarea{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);}
+  .cal-editor input[type=text],.cal-editor input[type=datetime-local],.cal-editor input[type=date],.cal-editor textarea{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);}
   .cal-editor textarea{min-height:60px;resize:vertical;}
   .cal-editor .cols{display:flex;gap:10px;}
   .cal-editor .cols > div{flex:1;}
@@ -160,11 +204,41 @@
   .cal-checkbox{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:400;}
   .cal-checkbox input{width:auto;}
 
+  /* Modal dialogs, following the reference's dialog pattern. Create and
+     edit flows open here instead of expanding inline. */
+  .dialog-backdrop{position:fixed;inset:0;display:grid;place-items:center;padding:var(--space-4);
+    background:color-mix(in srgb, var(--color-neutral-900) 50%, transparent);z-index:50;overflow-y:auto;}
+  .dialog{width:min(560px,100%);display:flex;flex-direction:column;gap:var(--space-3);
+    padding:var(--space-4);border-radius:var(--radius-lg);background:var(--color-surface);
+    box-shadow:var(--shadow-lg);max-height:calc(100vh - var(--space-8));overflow-y:auto;}
+  .dialog-title{font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:20px;}
+  .dialog-kicker{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent);margin-bottom:2px;}
+  .dialog-body{font-size:14px;}
+  .dialog-body label{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:var(--space-2) 0 4px;font-weight:600;}
+  .dialog-body label:first-child{margin-top:0;}
+  .dialog-body input[type=text],.dialog-body input[type=password],.dialog-body input[type=number],
+  .dialog-body input[type=email],.dialog-body input[type=datetime-local],.dialog-body input[type=time],
+  .dialog-body select,.dialog-body textarea{
+    width:100%;min-height:36px;padding:6px 10px;font:inherit;font-size:14px;color:var(--color-text);
+    caret-color:var(--color-accent);background:var(--panel);border:1px solid var(--color-divider);
+    border-radius:var(--radius-md);}
+  .dialog-body textarea{min-height:96px;resize:vertical;}
+  .dialog-body input:focus,.dialog-body select:focus,.dialog-body textarea:focus{
+    outline:2px solid var(--color-accent-100);border-color:var(--color-accent);}
+  .dialog-body .cols{display:flex;gap:var(--space-2);}
+  .dialog-body .cols > div{flex:1;}
+  .dialog-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-2);
+    align-items:center;flex-wrap:wrap;}
+  .dialog-actions .spacer{margin-right:auto;}
+  .dialog-status{font-size:12px;color:var(--muted);}
+  .hidden{display:none;}
+
   .spec-block{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:14px;}
   .spec-block h3{margin:0 0 6px;font-size:15px;}
-  .spec-block .tag{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--brand);}
+  .spec-block .tag{font-family:var(--font-mono);font-size:11px;color:var(--brand);}
   .spec-block p{margin:8px 0;font-size:13px;color:#4a4744;}
-  .spec-fields{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--paper);border-radius:6px;padding:10px 12px;line-height:1.7;color:#3b3936;}
+  .spec-fields{font-family:var(--font-mono);font-size:12px;background:var(--paper);border-radius:var(--radius-md);padding:10px 12px;line-height:1.7;color:#3b3936;}
   .security-note{border:1px solid #d9cfa1;background:#fbf6e4;border-radius:var(--radius);padding:16px 18px;margin:18px 0;}
   .security-note h3{margin:0 0 8px;color:#8a6a13;font-size:13px;text-transform:uppercase;letter-spacing:.5px;}
   .security-note ul{margin:6px 0 0;padding-left:18px;font-size:13px;}
@@ -231,7 +305,7 @@
       </div>
     </div>
 
-    <div id="mailBanner" class="hidden" style="margin:14px 24px 0;padding:8px 12px;border-radius:8px;font-size:12.5px;"></div>
+    <div id="mailBanner" class="hidden" style="margin:14px 24px 0;padding:8px 12px;border-radius:var(--radius-lg);font-size:12.5px;"></div>
 
     <!-- ================= DASHBOARD ================= -->
     <div class="view" id="view-dash">
@@ -301,7 +375,6 @@
         <button type="button" class="btn" id="calAdd">Add event</button>
       </div>
 
-      <div id="calEditor"></div>
 
       <div class="cal-grid" id="calGrid">
         <div class="cal-head">Mon</div><div class="cal-head">Tue</div><div class="cal-head">Wed</div><div class="cal-head">Thu</div><div class="cal-head">Fri</div><div class="cal-head">Sat</div><div class="cal-head">Sun</div>
@@ -311,7 +384,7 @@
         <h3>Subscribe to this calendar</h3>
         <p class="msg-snippet" style="margin-bottom:8px;">Add this URL as a subscribed calendar in Apple Calendar, Google Calendar, or Outlook. It updates automatically and is read-only on their side. Anyone with the URL can read your events, so treat it like a password.</p>
         <div class="row" style="display:flex;gap:8px;align-items:center;">
-          <input type="text" id="calFeedUrl" readonly style="flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:'IBM Plex Mono',monospace;background:var(--paper);color:var(--ink);">
+          <input type="text" id="calFeedUrl" readonly style="flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12px;font-family:var(--font-mono);background:var(--paper);color:var(--ink);">
           <button type="button" class="btn ghost" id="calCopyFeed">Copy</button>
           <button type="button" class="btn ghost" id="calRotateFeed">Reset URL</button>
         </div>
@@ -335,7 +408,7 @@
         <p class="msg-snippet" style="margin-bottom:10px;">When you're open to being booked. Leave a day blank to be unavailable.</p>
         <div class="int-row" style="border:none;padding-top:0;">
           <span class="msg-snippet">Timezone</span>
-          <select id="schTz" style="padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);"></select>
+          <select id="schTz" style="padding:5px 8px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);"></select>
         </div>
         <div id="schHours"></div>
         <div class="row" style="display:flex;gap:8px;align-items:center;margin-top:12px;">
@@ -357,13 +430,12 @@
 
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
         <button type="button" class="btn" id="crmAdd">Add client</button>
-        <select id="crmFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
+        <select id="crmFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
           <option value="">All stages</option>
         </select>
         <span class="msg-snippet" id="crmSummary"></span>
       </div>
 
-      <div id="crmEditor"></div>
 
       <div class="card">
         <table>
@@ -398,14 +470,13 @@
 
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
         <button type="button" class="btn" id="tkAdd">New ticket</button>
-        <select id="tkFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
+        <select id="tkFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
           <option value="open">Open only</option>
           <option value="">All tickets</option>
         </select>
         <span class="msg-snippet" id="tkSummary"></span>
       </div>
 
-      <div id="tkEditor"></div>
 
       <div class="card">
         <table>
@@ -637,6 +708,17 @@
       <p class="msg-snippet">Client names throughout this mockup are stand-ins.</p>
     </div>
 
+  </div>
+</div>
+
+<div class="dialog-backdrop hidden" id="modalRoot">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div>
+      <div class="dialog-kicker" id="modalKicker"></div>
+      <div class="dialog-title" id="modalTitle"></div>
+    </div>
+    <div class="dialog-body" id="modalBody"></div>
+    <div class="dialog-actions" id="modalActions"></div>
   </div>
 </div>
 
@@ -911,125 +993,67 @@
   }
 
   function openAddClientFromEmail(panel, msg){
-    if (panel.querySelector('.inline-form')) return;
+    // Guess the company from the sender's domain — usually right, always editable.
     const domain = (msg.fromAddress.split('@')[1] || '').split('.')[0];
     const guess = domain ? domain.charAt(0).toUpperCase() + domain.slice(1) : '';
-    const form = document.createElement('div');
-    form.className = 'connect-form inline-form';
-    form.innerHTML = `
-      <label>Client / company name</label>
-      <input type="text" class="ac-client" value="${escapeHtml(guess)}" placeholder="Company name">
-      <label>Contact name</label>
-      <input type="text" class="ac-contact" value="${escapeHtml(msg.from)}">
-      <label>Email</label>
-      <input type="text" class="ac-email" value="${escapeHtml(msg.fromAddress)}" readonly>
-      <div class="row" style="margin-top:10px;">
-        <button type="button" class="btn ac-save">Add client</button>
-        <button type="button" class="btn ghost ac-cancel">Cancel</button>
-        <span class="reply-status ac-status"></span>
-      </div>`;
-    panel.appendChild(form);
-    form.querySelector('.ac-client').focus();
-    form.querySelector('.ac-cancel').addEventListener('click', () => form.remove());
-    form.querySelector('.ac-save').addEventListener('click', async () => {
-      const status = form.querySelector('.ac-status');
-      const clientName = form.querySelector('.ac-client').value.trim();
-      if (!clientName) { status.textContent = 'Give the client a name.'; return; }
-      status.textContent = 'Adding…';
+
+    const modal = openModal({
+      kicker: 'From this email',
+      title: 'Add as client',
+      body: `
+        <label>Client / company name</label>
+        <input type="text" id="acClient" value="${escapeHtml(guess)}" placeholder="Company name">
+        <label>Contact name</label>
+        <input type="text" id="acContact" value="${escapeHtml(msg.from)}">
+        <label>Email</label>
+        <input type="text" id="acEmail" value="${escapeHtml(msg.fromAddress)}" readonly>
+        <p class="msg-snippet" style="margin-top:var(--space-2);">Mail from this address will be labelled with the client from now on.</p>`,
+      actions: actionButtons('Add client'),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const clientName = document.getElementById('acClient').value.trim();
+      if (!clientName) { modalStatus('Give the client a name.'); return; }
+      modalStatus('Adding…');
       try {
         const res = await fetch('/api/inbox/to-client', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             clientName,
-            contactName: form.querySelector('.ac-contact').value.trim(),
+            contactName: document.getElementById('acContact').value.trim(),
             email: msg.fromAddress,
           }),
         });
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(d.error || 'Could not add.');
-        form.remove();
+        closeModal();
         showBanner(`Added ${clientName} to the CRM.`, 'ok');
         loadCrm();
         loadInbox();
       } catch (err) {
-        status.textContent = err.message;
+        modalStatus(err.message);
       }
-    });
+    };
   }
 
   function openTicketFromEmail(panel, msg){
-    if (panel.querySelector('.inline-form')) return;
-    const form = document.createElement('div');
-    form.className = 'connect-form inline-form';
+    // Reuse the ticket editor, pre-filled from the message, so both
+    // routes to a new ticket behave identically.
     const tomorrow = new Date(Date.now() + 86400000);
-    const pad = n => String(n).padStart(2,'0');
-    const defaultSla = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth()+1)}-${pad(tomorrow.getDate())}T17:00`;
+    tomorrow.setHours(17, 0, 0, 0);
 
-    form.innerHTML = `
-      <label>Subject</label>
-      <input type="text" class="tk-subject" value="${escapeHtml(msg.subject)}">
-      <div class="cols" style="display:flex;gap:10px;">
-        <div style="flex:1;">
-          <label>Priority</label>
-          <select class="tk-priority" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--panel);color:var(--ink);">
-            <option value="low">Low</option>
-            <option value="normal" selected>Normal</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </select>
-        </div>
-        <div style="flex:1;">
-          <label>SLA due</label>
-          <input type="datetime-local" class="tk-sla" value="${defaultSla}">
-        </div>
-      </div>
-      <label>Details (from the email)</label>
-      <textarea class="tk-body" style="min-height:110px;">${escapeHtml((msg.text || '').slice(0, 4000))}</textarea>
-      <p class="msg-snippet" style="margin-top:6px;">
-        ${msg.client
-          ? `Will be linked to <b>${escapeHtml(msg.client.name)}</b>.`
-          : 'Sender isn\'t a known client — add them first if you want this ticket linked.'}
-        The SLA date appears on your calendar.
-      </p>
-      <div class="row" style="margin-top:10px;">
-        <button type="button" class="btn tk-save">Create ticket</button>
-        <button type="button" class="btn ghost tk-cancel">Cancel</button>
-        <span class="reply-status tk-status"></span>
-      </div>`;
-    panel.appendChild(form);
-    form.querySelector('.tk-subject').focus();
-    form.querySelector('.tk-cancel').addEventListener('click', () => form.remove());
-
-    form.querySelector('.tk-save').addEventListener('click', async () => {
-      const status = form.querySelector('.tk-status');
-      const subject = form.querySelector('.tk-subject').value.trim();
-      if (!subject) { status.textContent = 'Give it a subject.'; return; }
-      const slaRaw = form.querySelector('.tk-sla').value;
-      status.textContent = 'Creating…';
-      try {
-        const res = await fetch('/api/tickets', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            subject,
-            body: form.querySelector('.tk-body').value,
-            priority: form.querySelector('.tk-priority').value,
-            slaDueAt: slaRaw ? new Date(slaRaw).toISOString() : null,
-            clientId: msg.client?.id || null,
-            contactEmail: msg.fromAddress,
-            source: 'email',
-            sourceAccount: msg.account,
-            sourceUid: msg.id,
-          }),
-        });
-        const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(d.error || 'Could not create.');
-        form.remove();
-        showBanner(`Created ${d.reference} from this email.`, 'ok');
-        loadTickets();
-        loadCalendar();
-      } catch (err) {
-        status.textContent = err.message;
-      }
+    openTicketEditor(null, {
+      subject: msg.subject,
+      body: (msg.text || '').slice(0, 4000),
+      priority: 'normal',
+      status: 'open',
+      slaDueAt: tomorrow.toISOString(),
+      clientId: msg.client?.id || null,
+      contactEmail: msg.fromAddress,
+      source: 'email',
+      sourceAccount: msg.account,
+      sourceUid: msg.id,
     });
   }
 
@@ -1065,40 +1089,31 @@
   }
 
   function openConnectForm(row, email){
-    if (row.parentElement.querySelector('.connect-form')) return;
-    const form = document.createElement('div');
-    form.className = 'connect-form';
-    form.innerHTML = `
-      <label>Password for ${escapeHtml(email)}</label>
-      <input type="password" class="cf-password" autocomplete="new-password" placeholder="Mailbox password">
-      <label>Username <span class="msg-snippet">(usually the full address)</span></label>
-      <input type="text" class="cf-username" value="${escapeHtml(email)}">
-      <div class="cf-advanced">
-        <label>IMAP host / port</label>
-        <div class="row">
-          <input type="text" class="cf-imap-host" value="${escapeHtml(mailDefaults.imapHost || '')}">
-          <input type="text" class="cf-imap-port" style="max-width:80px;" value="${escapeHtml(String(mailDefaults.imapPort || ''))}">
+    const modal = openModal({
+      kicker: 'Mail',
+      title: `Connect ${email}`,
+      body: `
+        <label>Password</label>
+        <input type="password" id="cfPassword" autocomplete="new-password" placeholder="Mailbox password">
+        <label>Username (usually the full address)</label>
+        <input type="text" id="cfUsername" value="${escapeHtml(email)}">
+        <div class="cols">
+          <div><label>IMAP host</label><input type="text" id="cfImapHost" value="${escapeHtml(mailDefaults.imapHost || '')}"></div>
+          <div style="max-width:110px;"><label>Port</label><input type="text" id="cfImapPort" value="${escapeHtml(String(mailDefaults.imapPort || ''))}"></div>
         </div>
-        <label>SMTP host / port</label>
-        <div class="row">
-          <input type="text" class="cf-smtp-host" value="${escapeHtml(mailDefaults.smtpHost || '')}">
-          <input type="text" class="cf-smtp-port" style="max-width:80px;" value="${escapeHtml(String(mailDefaults.smtpPort || ''))}">
+        <div class="cols">
+          <div><label>SMTP host</label><input type="text" id="cfSmtpHost" value="${escapeHtml(mailDefaults.smtpHost || '')}"></div>
+          <div style="max-width:110px;"><label>Port</label><input type="text" id="cfSmtpPort" value="${escapeHtml(String(mailDefaults.smtpPort || ''))}"></div>
         </div>
-      </div>
-      <div class="row" style="margin-top:10px;">
-        <button type="button" class="btn cf-save">Connect</button>
-        <button type="button" class="btn ghost cf-cancel">Cancel</button>
-        <span class="reply-status cf-status"></span>
-      </div>`;
-    row.insertAdjacentElement('afterend', form);
-    form.querySelector('.cf-password').focus();
+        <p class="msg-snippet" style="margin-top:var(--space-2);">Credentials are checked against the server before being saved, and stored encrypted.</p>`,
+      actions: actionButtons('Connect'),
+    });
 
-    form.querySelector('.cf-cancel').addEventListener('click', () => form.remove());
-    form.querySelector('.cf-save').addEventListener('click', async () => {
-      const status = form.querySelector('.cf-status');
-      const password = form.querySelector('.cf-password').value;
-      if (!password) { status.textContent = 'Enter the password.'; return; }
-      status.textContent = 'Checking credentials…';
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const password = document.getElementById('cfPassword').value;
+      if (!password) { modalStatus('Enter the password.'); return; }
+      modalStatus('Checking credentials…');
       try {
         const res = await fetch('/api/mailboxes/connect', {
           method: 'POST',
@@ -1106,26 +1121,26 @@
           body: JSON.stringify({
             email,
             password,
-            username: form.querySelector('.cf-username').value,
-            imapHost: form.querySelector('.cf-imap-host').value,
-            imapPort: form.querySelector('.cf-imap-port').value,
-            smtpHost: form.querySelector('.cf-smtp-host').value,
-            smtpPort: form.querySelector('.cf-smtp-port').value,
+            username: document.getElementById('cfUsername').value,
+            imapHost: document.getElementById('cfImapHost').value,
+            imapPort: document.getElementById('cfImapPort').value,
+            smtpHost: document.getElementById('cfSmtpHost').value,
+            smtpPort: document.getElementById('cfSmtpPort').value,
           }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error || 'Could not connect.');
         }
-        form.remove();
+        closeModal();
         showBanner(`Connected ${email}.`, 'ok');
         loadIntegrations();
         loadMailboxes();
         loadInbox();
       } catch (err) {
-        status.textContent = err.message;
+        modalStatus(err.message);
       }
-    });
+    };
   }
 
   document.getElementById('intMailAccounts').addEventListener('click', async (e) => {
@@ -1158,6 +1173,51 @@
       alert('Failed to disconnect — try again.');
     }
   });
+
+  // --- Modal dialogs ---
+  // Create/edit flows open here rather than expanding inline, so the
+  // list behind stays put and the form gets full attention.
+  const modalRoot = document.getElementById('modalRoot');
+  let modalOnClose = null;
+
+  function openModal({ kicker, title, body, actions }){
+    document.getElementById('modalKicker').textContent = kicker || '';
+    document.getElementById('modalKicker').style.display = kicker ? '' : 'none';
+    document.getElementById('modalTitle').textContent = title || '';
+    document.getElementById('modalBody').innerHTML = body || '';
+    document.getElementById('modalActions').innerHTML = actions || '';
+    modalRoot.classList.remove('hidden');
+
+    const first = modalRoot.querySelector('.dialog-body input:not([readonly]), .dialog-body textarea, .dialog-body select');
+    if (first) first.focus();
+    return modalRoot;
+  }
+
+  function closeModal(){
+    modalRoot.classList.add('hidden');
+    document.getElementById('modalBody').innerHTML = '';
+    document.getElementById('modalActions').innerHTML = '';
+    if (modalOnClose) { const fn = modalOnClose; modalOnClose = null; fn(); }
+  }
+
+  function modalStatus(text){
+    const el = modalRoot.querySelector('.dialog-status');
+    if (el) el.textContent = text || '';
+  }
+
+  // Clicking the backdrop (but not the dialog) dismisses, as does Escape.
+  modalRoot.addEventListener('click', (e) => { if (e.target === modalRoot) closeModal(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modalRoot.classList.contains('hidden')) closeModal();
+  });
+
+  function actionButtons(saveLabel, { destructive } = {}){
+    return `
+      ${destructive ? `<button type="button" class="btn ghost spacer" data-modal="delete" style="color:var(--red);">${escapeHtml(destructive)}</button>` : ''}
+      <span class="dialog-status"></span>
+      <button type="button" class="btn ghost" data-modal="cancel">Cancel</button>
+      <button type="button" class="btn" data-modal="save">${escapeHtml(saveLabel)}</button>`;
+  }
 
   // --- Service desk ---
   let tkData = { statuses: [], priorities: [], tickets: [], stats: {} };
@@ -1222,69 +1282,68 @@
     openTicketEditor(tkData.tickets.find(t => t.id === Number(tr.dataset.id)));
   });
 
-  function openTicketEditor(ticket){
-    const isEdit = !!ticket;
-    const wrap = document.getElementById('tkEditor');
-    const pad = n => String(n).padStart(2,'0');
-    const toLocal = (iso) => {
-      if (!iso) return '';
-      const d = new Date(iso);
-      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
+  const pad2 = n => String(n).padStart(2,'0');
+  function toLocalInput(iso){
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
 
-    wrap.innerHTML = `
-      <div class="cal-editor">
-        ${isEdit ? `<div class="msg-meta">${escapeHtml(ticket.reference)}${ticket.source === 'email' ? ' · from email' : ''}${ticket.contactEmail ? ' · ' + escapeHtml(ticket.contactEmail) : ''}</div>` : ''}
+  function openTicketEditor(ticket, prefill){
+    const isEdit = !!ticket;
+    const t = ticket || prefill || {};
+
+    const modal = openModal({
+      kicker: isEdit ? ticket.reference : 'Service desk',
+      title: isEdit ? 'Edit ticket' : 'New ticket',
+      body: `
+        ${isEdit && (ticket.source === 'email' || ticket.contactEmail)
+          ? `<p class="msg-snippet" style="margin-bottom:var(--space-2);">${ticket.source === 'email' ? 'Raised from an email' : 'Raised manually'}${ticket.contactEmail ? ' · ' + escapeHtml(ticket.contactEmail) : ''}</p>` : ''}
         <label>Subject</label>
-        <input type="text" id="tkSubject" value="${escapeHtml(ticket?.subject || '')}" placeholder="What's wrong?">
+        <input type="text" id="tkSubject" value="${escapeHtml(t.subject || '')}" placeholder="What's wrong?">
         <div class="cols">
           <div>
             <label>Status</label>
-            <select id="tkStatus" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);">
-              ${tkData.statuses.map(s => `<option value="${s.key}" ${ticket?.status === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
+            <select id="tkStatus">
+              ${tkData.statuses.map(s => `<option value="${s.key}" ${t.status === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
             </select>
           </div>
           <div>
             <label>Priority</label>
-            <select id="tkPriority" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);">
-              ${tkData.priorities.map(p => `<option value="${p.key}" ${ticket?.priority === p.key ? 'selected' : ''}>${escapeHtml(p.label)}</option>`).join('')}
+            <select id="tkPriority">
+              ${tkData.priorities.map(p => `<option value="${p.key}" ${(t.priority || 'normal') === p.key ? 'selected' : ''}>${escapeHtml(p.label)}</option>`).join('')}
             </select>
           </div>
         </div>
         <div class="cols">
           <div>
             <label>Client</label>
-            <select id="tkClient" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);">
+            <select id="tkClient">
               <option value="">— none —</option>
-              ${crmData.clients.map(c => `<option value="${c.id}" ${ticket?.clientId === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+              ${crmData.clients.map(c => `<option value="${c.id}" ${t.clientId === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
             </select>
           </div>
           <div>
             <label>SLA due</label>
-            <input type="datetime-local" id="tkSla" value="${toLocal(ticket?.slaDueAt)}">
+            <input type="datetime-local" id="tkSla" value="${toLocalInput(t.slaDueAt)}">
           </div>
         </div>
         <label>Details</label>
-        <textarea id="tkBody" style="min-height:120px;">${escapeHtml(ticket?.body || '')}</textarea>
-        <div class="actions">
-          <button type="button" class="btn" id="tkSave">${isEdit ? 'Save changes' : 'Create ticket'}</button>
-          <button type="button" class="btn ghost" id="tkCancel">Cancel</button>
-          ${isEdit ? '<button type="button" class="btn ghost" id="tkDelete" style="color:var(--red);">Delete</button>' : ''}
-          <span class="reply-status" id="tkStatusMsg"></span>
-        </div>
-      </div>`;
+        <textarea id="tkBody">${escapeHtml(t.body || '')}</textarea>
+        <p class="msg-snippet" style="margin-top:var(--space-2);">An SLA date appears on the calendar and in the subscription feed.</p>`,
+      actions: actionButtons(isEdit ? 'Save changes' : 'Create ticket', { destructive: isEdit ? 'Delete' : null }),
+    });
 
-    document.getElementById('tkSubject').focus();
-    document.getElementById('tkCancel').addEventListener('click', () => { wrap.innerHTML = ''; });
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
 
-    document.getElementById('tkSave').addEventListener('click', async () => {
-      const status = document.getElementById('tkStatusMsg');
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
       const subject = document.getElementById('tkSubject').value.trim();
-      if (!subject) { status.textContent = 'Give it a subject.'; return; }
+      if (!subject) { modalStatus('Give it a subject.'); return; }
       const slaRaw = document.getElementById('tkSla').value;
       const clientRaw = document.getElementById('tkClient').value;
 
-      status.textContent = 'Saving…';
+      modalStatus('Saving…');
       try {
         const res = await fetch(isEdit ? `/api/tickets/${ticket.id}` : '/api/tickets', {
           method: isEdit ? 'PATCH' : 'POST',
@@ -1296,27 +1355,33 @@
             priority: document.getElementById('tkPriority').value,
             clientId: clientRaw ? Number(clientRaw) : null,
             slaDueAt: slaRaw ? new Date(slaRaw).toISOString() : null,
+            ...(isEdit ? {} : {
+              source: t.source || 'manual',
+              sourceAccount: t.sourceAccount || null,
+              sourceUid: t.sourceUid || null,
+              contactEmail: t.contactEmail || null,
+            }),
           }),
         });
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(d.error || 'Could not save.');
-        wrap.innerHTML = '';
+        closeModal();
+        if (!isEdit) showBanner(`Created ${d.reference}.`, 'ok');
         loadTickets();
         loadCalendar();
       } catch (err) {
-        status.textContent = err.message;
+        modalStatus(err.message);
       }
-    });
+    };
 
-    if (isEdit) {
-      document.getElementById('tkDelete').addEventListener('click', async () => {
-        if (!confirm(`Delete ${ticket.reference}? Its calendar entry goes too.`)) return;
-        await fetch(`/api/tickets/${ticket.id}`, { method: 'DELETE' });
-        wrap.innerHTML = '';
-        loadTickets();
-        loadCalendar();
-      });
-    }
+    const del = modal.querySelector('[data-modal="delete"]');
+    if (del) del.onclick = async () => {
+      if (!confirm(`Delete ${ticket.reference}? Its calendar entry goes too.`)) return;
+      await fetch(`/api/tickets/${ticket.id}`, { method: 'DELETE' });
+      closeModal();
+      loadTickets();
+      loadCalendar();
+    };
   }
 
   // --- CRM ---
@@ -1401,17 +1466,18 @@
 
   function openClientEditor(client){
     const isEdit = !!client;
-    const wrap = document.getElementById('crmEditor');
     const dollars = client?.valueCents != null ? (client.valueCents / 100) : '';
 
-    wrap.innerHTML = `
-      <div class="cal-editor">
+    const modal = openModal({
+      kicker: 'CRM',
+      title: isEdit ? escapeHtml(client.name) : 'New client',
+      body: `
         <label>Client / lead name</label>
         <input type="text" id="clName" value="${escapeHtml(client?.name || '')}" placeholder="Acme Logistics">
         <div class="cols">
           <div>
             <label>Stage</label>
-            <select id="clStage" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);">
+            <select id="clStage">
               ${crmData.stages.map(s => `<option value="${s.key}" ${client?.stage === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
             </select>
           </div>
@@ -1420,76 +1486,72 @@
             <input type="number" id="clValue" value="${dollars}" min="0" step="50" placeholder="4200">
           </div>
         </div>
-        <label class="cal-checkbox"><input type="checkbox" id="clRecurring" ${client?.recurring ? 'checked' : ''}> Recurring monthly</label>
+        <label class="cal-checkbox" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);">
+          <input type="checkbox" id="clRecurring" ${client?.recurring ? 'checked' : ''}> Recurring monthly
+        </label>
         <label>Notes</label>
         <textarea id="clNotes" placeholder="Context, history, what they need…">${escapeHtml(client?.notes || '')}</textarea>
 
         ${isEdit ? `
-        <label style="margin-top:16px;">Contacts</label>
+        <label>Contacts</label>
         <div id="clContacts">${renderContacts(client)}</div>
-        <div class="cols" style="margin-top:8px;">
+        <div class="cols" style="margin-top:var(--space-2);">
           <div><input type="text" id="ctName" placeholder="Name"></div>
           <div><input type="text" id="ctEmail" placeholder="email@company.com"></div>
         </div>
-        <div class="cols" style="margin-top:6px;">
+        <div class="cols" style="margin-top:var(--space-1);">
           <div><input type="text" id="ctRole" placeholder="Role (optional)"></div>
           <div><input type="text" id="ctPhone" placeholder="Phone (optional)"></div>
         </div>
-        <div class="row" style="margin-top:8px;">
+        <div style="margin-top:var(--space-2);display:flex;gap:var(--space-2);align-items:center;">
           <button type="button" class="btn ghost" id="clAddContact">Add contact</button>
           <span class="reply-status" id="ctStatus"></span>
-        </div>` : '<p class="msg-snippet" style="margin-top:12px;">Save the client first, then you can add contacts.</p>'}
+        </div>`
+        : '<p class="msg-snippet" style="margin-top:var(--space-2);">Save the client first, then you can add contacts.</p>'}`,
+      actions: actionButtons(isEdit ? 'Save changes' : 'Add client', { destructive: isEdit ? 'Delete' : null }),
+    });
 
-        <div class="actions">
-          <button type="button" class="btn" id="clSave">${isEdit ? 'Save changes' : 'Add client'}</button>
-          <button type="button" class="btn ghost" id="clCancel">Cancel</button>
-          ${isEdit ? '<button type="button" class="btn ghost" id="clDelete" style="color:var(--red);">Delete</button>' : ''}
-          <span class="reply-status" id="clStatus"></span>
-        </div>
-      </div>`;
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
 
-    document.getElementById('clName').focus();
-    document.getElementById('clCancel').addEventListener('click', () => { wrap.innerHTML = ''; });
-
-    document.getElementById('clSave').addEventListener('click', async () => {
-      const status = document.getElementById('clStatus');
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
       const name = document.getElementById('clName').value.trim();
-      if (!name) { status.textContent = 'Give it a name.'; return; }
+      if (!name) { modalStatus('Give it a name.'); return; }
       const rawValue = document.getElementById('clValue').value;
-      const payload = {
-        name,
-        stage: document.getElementById('clStage').value,
-        valueCents: rawValue === '' ? null : Math.round(Number(rawValue) * 100),
-        recurring: document.getElementById('clRecurring').checked,
-        notes: document.getElementById('clNotes').value.trim() || null,
-        lastTouchAt: client?.lastTouchAt || null,
-      };
-      status.textContent = 'Saving…';
+      modalStatus('Saving…');
       try {
         const res = await fetch(isEdit ? `/api/crm/clients/${client.id}` : '/api/crm/clients', {
           method: isEdit ? 'PATCH' : 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            name,
+            stage: document.getElementById('clStage').value,
+            valueCents: rawValue === '' ? null : Math.round(Number(rawValue) * 100),
+            recurring: document.getElementById('clRecurring').checked,
+            notes: document.getElementById('clNotes').value.trim() || null,
+            lastTouchAt: client?.lastTouchAt || null,
+          }),
         });
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(d.error || 'Could not save.');
-        wrap.innerHTML = '';
         await loadCrm();
+        // Reopen on the saved record so contacts can be added straight away.
         if (!isEdit) openClientEditor(crmData.clients.find(c => c.id === d.id));
+        else closeModal();
       } catch (err) {
-        status.textContent = err.message;
+        modalStatus(err.message);
       }
-    });
+    };
+
+    const del = modal.querySelector('[data-modal="delete"]');
+    if (del) del.onclick = async () => {
+      if (!confirm(`Delete ${client.name}? Its contacts are deleted too. This can't be undone.`)) return;
+      await fetch(`/api/crm/clients/${client.id}`, { method: 'DELETE' });
+      closeModal();
+      loadCrm();
+      loadInbox();
+    };
 
     if (isEdit) {
-      document.getElementById('clDelete').addEventListener('click', async () => {
-        if (!confirm(`Delete ${client.name}? Its contacts are deleted too. This can't be undone.`)) return;
-        await fetch(`/api/crm/clients/${client.id}`, { method: 'DELETE' });
-        wrap.innerHTML = '';
-        loadCrm();
-        loadInbox();
-      });
-
       document.getElementById('clAddContact').addEventListener('click', async () => {
         const status = document.getElementById('ctStatus');
         const name = document.getElementById('ctName').value.trim();
@@ -1517,9 +1579,9 @@
       });
 
       document.getElementById('clContacts').addEventListener('click', async (e) => {
-        const del = e.target.closest('.ct-del');
-        if (!del) return;
-        await fetch(`/api/crm/contacts/${del.dataset.id}`, { method: 'DELETE' });
+        const delBtn = e.target.closest('.ct-del');
+        if (!delBtn) return;
+        await fetch(`/api/crm/contacts/${delBtn.dataset.id}`, { method: 'DELETE' });
         await loadCrm();
         openClientEditor(crmData.clients.find(c => c.id === client.id));
         loadInbox();
@@ -1576,7 +1638,7 @@
       <div class="int-row" data-id="${t.id}">
         <span style="flex:1;">
           <b>${escapeHtml(t.name)}</b> <span class="msg-snippet">· ${t.durationMinutes} min${t.active ? '' : ' · inactive'}</span><br>
-          <span class="msg-snippet" style="font-family:'IBM Plex Mono',monospace;font-size:11px;">${escapeHtml(url)}</span>
+          <span class="msg-snippet" style="font-family:var(--font-mono);font-size:11px;">${escapeHtml(url)}</span>
         </span>
         <span style="display:flex;gap:6px;">
           <button type="button" class="int-btn disconnected sch-copy" data-url="${escapeHtml(url)}">Copy link</button>
@@ -1609,10 +1671,10 @@
         </label>
         <span style="display:flex;gap:6px;align-items:center;">
           <input type="time" class="sch-start" value="${minutesToTime(w ? w.startMinute : 540)}"
-                 style="padding:5px 7px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);">
+                 style="padding:5px 7px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);">
           <span class="msg-snippet">to</span>
           <input type="time" class="sch-end" value="${minutesToTime(w ? w.endMinute : 1020)}"
-                 style="padding:5px 7px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);">
+                 style="padding:5px 7px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);">
         </span>
       </div>`;
     }).join('');
@@ -1661,50 +1723,45 @@
 
   function openTypeEditor(type){
     const isEdit = !!type;
-    const wrap = document.getElementById('schTypes');
-    const form = document.createElement('div');
-    form.className = 'connect-form';
-    form.innerHTML = `
-      <label>Name</label>
-      <input type="text" class="t-name" value="${escapeHtml(type?.name || '')}" placeholder="Discovery call">
-      <label>Description</label>
-      <input type="text" class="t-desc" value="${escapeHtml(type?.description || '')}" placeholder="What this meeting is for">
-      <div class="row" style="gap:10px;">
-        <div style="flex:1;"><label>Duration (min)</label><input type="number" class="t-dur" value="${type?.durationMinutes ?? 30}" min="5" step="5"></div>
-        <div style="flex:1;"><label>Buffer after (min)</label><input type="number" class="t-bufa" value="${type?.bufferAfterMinutes ?? 10}" min="0" step="5"></div>
-      </div>
-      <div class="row" style="gap:10px;">
-        <div style="flex:1;"><label>Min notice (min)</label><input type="number" class="t-notice" value="${type?.minNoticeMinutes ?? 240}" min="0" step="30"></div>
-        <div style="flex:1;"><label>Bookable days ahead</label><input type="number" class="t-ahead" value="${type?.maxDaysAhead ?? 60}" min="1"></div>
-      </div>
-      <label>Location</label>
-      <input type="text" class="t-loc" value="${escapeHtml(type?.location || '')}" placeholder="Zoom, phone, address…">
-      <label class="cal-checkbox" style="margin-top:10px;"><input type="checkbox" class="t-active" ${type?.active !== false ? 'checked' : ''}> Accepting bookings</label>
-      <div class="row" style="margin-top:12px;">
-        <button type="button" class="btn t-save">${isEdit ? 'Save' : 'Create'}</button>
-        <button type="button" class="btn ghost t-cancel">Cancel</button>
-        ${isEdit ? '<button type="button" class="btn ghost t-delete" style="color:var(--red);">Delete</button>' : ''}
-        <span class="reply-status t-status"></span>
-      </div>`;
-    wrap.appendChild(form);
-    form.querySelector('.t-name').focus();
+    const modal = openModal({
+      kicker: 'Scheduling',
+      title: isEdit ? 'Edit meeting type' : 'New meeting type',
+      body: `
+        <label>Name</label>
+        <input type="text" id="tName" value="${escapeHtml(type?.name || '')}" placeholder="Discovery call">
+        <label>Description</label>
+        <input type="text" id="tDesc" value="${escapeHtml(type?.description || '')}" placeholder="What this meeting is for">
+        <div class="cols">
+          <div><label>Duration (min)</label><input type="number" id="tDur" value="${type?.durationMinutes ?? 30}" min="5" step="5"></div>
+          <div><label>Buffer after (min)</label><input type="number" id="tBufa" value="${type?.bufferAfterMinutes ?? 10}" min="0" step="5"></div>
+        </div>
+        <div class="cols">
+          <div><label>Min notice (min)</label><input type="number" id="tNotice" value="${type?.minNoticeMinutes ?? 240}" min="0" step="30"></div>
+          <div><label>Bookable days ahead</label><input type="number" id="tAhead" value="${type?.maxDaysAhead ?? 60}" min="1"></div>
+        </div>
+        <label>Location</label>
+        <input type="text" id="tLoc" value="${escapeHtml(type?.location || '')}" placeholder="Zoom, phone, address…">
+        <label class="cal-checkbox" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);">
+          <input type="checkbox" id="tActive" ${type?.active !== false ? 'checked' : ''}> Accepting bookings
+        </label>`,
+      actions: actionButtons(isEdit ? 'Save' : 'Create', { destructive: isEdit ? 'Delete' : null }),
+    });
 
-    form.querySelector('.t-cancel').addEventListener('click', () => form.remove());
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
 
-    form.querySelector('.t-save').addEventListener('click', async () => {
-      const status = form.querySelector('.t-status');
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
       const payload = {
-        name: form.querySelector('.t-name').value.trim(),
-        description: form.querySelector('.t-desc').value.trim() || null,
-        durationMinutes: Number(form.querySelector('.t-dur').value),
-        bufferAfterMinutes: Number(form.querySelector('.t-bufa').value),
-        minNoticeMinutes: Number(form.querySelector('.t-notice').value),
-        maxDaysAhead: Number(form.querySelector('.t-ahead').value),
-        location: form.querySelector('.t-loc').value.trim() || null,
-        active: form.querySelector('.t-active').checked,
+        name: document.getElementById('tName').value.trim(),
+        description: document.getElementById('tDesc').value.trim() || null,
+        durationMinutes: Number(document.getElementById('tDur').value),
+        bufferAfterMinutes: Number(document.getElementById('tBufa').value),
+        minNoticeMinutes: Number(document.getElementById('tNotice').value),
+        maxDaysAhead: Number(document.getElementById('tAhead').value),
+        location: document.getElementById('tLoc').value.trim() || null,
+        active: document.getElementById('tActive').checked,
       };
-      if (!payload.name) { status.textContent = 'Give it a name.'; return; }
-      status.textContent = 'Saving…';
+      if (!payload.name) { modalStatus('Give it a name.'); return; }
+      modalStatus('Saving…');
       try {
         const res = await fetch(isEdit ? `/api/scheduling/event-types/${type.id}` : '/api/scheduling/event-types', {
           method: isEdit ? 'PATCH' : 'POST',
@@ -1713,21 +1770,20 @@
         });
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(d.error || 'Could not save.');
-        form.remove();
+        closeModal();
         loadScheduling();
       } catch (err) {
-        status.textContent = err.message;
+        modalStatus(err.message);
       }
-    });
+    };
 
-    if (isEdit) {
-      form.querySelector('.t-delete').addEventListener('click', async () => {
-        if (!confirm(`Delete "${type.name}"? Its booking link will stop working. Existing bookings stay on the calendar.`)) return;
-        await fetch(`/api/scheduling/event-types/${type.id}`, { method: 'DELETE' });
-        form.remove();
-        loadScheduling();
-      });
-    }
+    const del = modal.querySelector('[data-modal="delete"]');
+    if (del) del.onclick = async () => {
+      if (!confirm(`Delete "${type.name}"? Its booking link will stop working. Existing bookings stay on the calendar.`)) return;
+      await fetch(`/api/scheduling/event-types/${type.id}`, { method: 'DELETE' });
+      closeModal();
+      loadScheduling();
+    };
   }
 
   document.getElementById('schAddType').addEventListener('click', () => openTypeEditor(null));
@@ -1816,7 +1872,7 @@
         ${options ? `
         <div class="int-row">
           <span class="msg-snippet">Write events to</span>
-          <select id="gCalendar" style="padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);">${options}</select>
+          <select id="gCalendar" style="padding:5px 8px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12px;font-family:inherit;background:var(--paper);color:var(--ink);">${options}</select>
         </div>
         <div class="int-row"><span class="msg-snippet">Make sure Calendly is checking this same calendar for conflicts, or blocking won't take effect.</span></div>` : ''}
         <div class="int-row"><span class="msg-snippet" id="gStatus"></span></div>`;
@@ -1910,24 +1966,21 @@
           <button type="button" class="int-btn disconnected" id="clConnect">Connect</button>
         </div>`;
       document.getElementById('clConnect').addEventListener('click', () => {
-        wrap.innerHTML = `
-          <div class="connect-form">
-            <label>Calendly personal access token</label>
+        const modal = openModal({
+          kicker: 'Calendly',
+          title: 'Connect Calendly',
+          body: `
+            <label>Personal access token</label>
             <input type="password" id="clToken" autocomplete="new-password" placeholder="Paste token">
-            <p class="msg-snippet" style="margin-top:6px;">Create one at calendly.com → Integrations → API &amp; Webhooks → Personal Access Tokens.</p>
-            <div class="row" style="margin-top:10px;">
-              <button type="button" class="btn" id="clSave">Connect</button>
-              <button type="button" class="btn ghost" id="clCancel">Cancel</button>
-              <span class="reply-status" id="clStatus"></span>
-            </div>
-          </div>`;
-        document.getElementById('clToken').focus();
-        document.getElementById('clCancel').addEventListener('click', loadCalendly);
-        document.getElementById('clSave').addEventListener('click', async () => {
-          const st = document.getElementById('clStatus');
+            <p class="msg-snippet" style="margin-top:var(--space-2);">Create one at calendly.com → Integrations → API &amp; Webhooks → Personal Access Tokens. It's validated before being stored, and kept encrypted.</p>`,
+          actions: actionButtons('Connect'),
+        });
+
+        modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+        modal.querySelector('[data-modal="save"]').onclick = async () => {
           const token = document.getElementById('clToken').value.trim();
-          if (!token) { st.textContent = 'Paste the token first.'; return; }
-          st.textContent = 'Checking token…';
+          if (!token) { modalStatus('Paste the token first.'); return; }
+          modalStatus('Checking token…');
           try {
             const r = await fetch('/api/calendly/connect', {
               method: 'POST',
@@ -1936,13 +1989,14 @@
             });
             const d = await r.json();
             if (!r.ok) throw new Error(d.error || 'Could not connect.');
+            closeModal();
             showBanner(`Connected Calendly (${d.account}) — ${d.upserted} booking(s) synced.`, 'ok');
             loadCalendly();
             loadCalendar();
           } catch (err) {
-            st.textContent = err.message;
+            modalStatus(err.message);
           }
-        });
+        };
       });
     } catch (err) {
       wrap.innerHTML = '<div class="int-row"><span class="msg-snippet">Calendly status unavailable.</span></div>';
@@ -2025,41 +2079,34 @@
     }
   }
 
-  function closeEditor(){ document.getElementById('calEditor').innerHTML = ''; }
+  function closeEditor(){ closeModal(); }
 
   function openEditor(event, defaultDateKey){
-    const wrap = document.getElementById('calEditor');
     const isEdit = !!event;
 
     // Synced events belong to the system they came from; showing an
     // editable form would invite changes the next sync silently undoes.
     if (isEdit && event.source !== 'manual') {
       const when = new Date(event.startsAt);
-      wrap.innerHTML = `
-        <div class="cal-editor">
-          <div class="msg-subject">${escapeHtml(event.title)}</div>
-          <div class="msg-meta" style="margin-top:4px;">${when.toLocaleString()}${event.location ? ' · ' + escapeHtml(event.location) : ''}</div>
-          <p class="msg-snippet" style="margin-top:10px;">Synced from ${escapeHtml(event.source)} — reschedule or cancel it there and it'll update here on the next sync.</p>
-          <div class="actions">
-            <button type="button" class="btn ghost" id="evCloseRO">Close</button>
-          </div>
-        </div>`;
-      document.getElementById('evCloseRO').addEventListener('click', closeEditor);
+      const ro = openModal({
+        kicker: `Synced from ${event.source}`,
+        title: event.title,
+        body: `
+          <p>${escapeHtml(when.toLocaleString())}${event.location ? ' · ' + escapeHtml(event.location) : ''}</p>
+          <p class="msg-snippet" style="margin-top:var(--space-2);">This event is owned by ${escapeHtml(event.source)} — reschedule or cancel it there and it'll update here on the next sync.</p>`,
+        actions: '<button type="button" class="btn ghost" data-modal="cancel">Close</button>',
+      });
+      ro.querySelector('[data-modal="cancel"]').onclick = closeModal;
       return;
     }
-
-    // datetime-local wants local wall-clock, not UTC.
-    const toLocalInput = (iso) => {
-      const d = new Date(iso);
-      const pad = n => String(n).padStart(2,'0');
-      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
 
     const startVal = isEdit ? toLocalInput(event.startsAt) : `${defaultDateKey || localDateKey(new Date())}T09:00`;
     const endVal = isEdit && event.endsAt ? toLocalInput(event.endsAt) : '';
 
-    wrap.innerHTML = `
-      <div class="cal-editor">
+    const modal = openModal({
+      kicker: 'Calendar',
+      title: isEdit ? 'Edit event' : 'New event',
+      body: `
         <label>Title</label>
         <input type="text" id="evTitle" value="${escapeHtml(event?.title || '')}" placeholder="Meeting title">
         <div class="cols">
@@ -2068,82 +2115,73 @@
             <input type="datetime-local" id="evStart" value="${startVal}">
           </div>
           <div>
-            <label>Ends <span class="msg-snippet">(optional)</span></label>
+            <label>Ends (optional)</label>
             <input type="datetime-local" id="evEnd" value="${endVal}">
           </div>
         </div>
-        <label class="cal-checkbox"><input type="checkbox" id="evAllDay" ${event?.allDay ? 'checked' : ''}> All day</label>
+        <label class="cal-checkbox" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);">
+          <input type="checkbox" id="evAllDay" ${event?.allDay ? 'checked' : ''}> All day
+        </label>
         <label>Location</label>
         <input type="text" id="evLocation" value="${escapeHtml(event?.location || '')}" placeholder="Zoom link, address…">
         <label>Notes</label>
-        <textarea id="evNotes" placeholder="Agenda, context…">${escapeHtml(event?.notes || '')}</textarea>
-        <div class="actions">
-          <button type="button" class="btn" id="evSave">${isEdit ? 'Save changes' : 'Add event'}</button>
-          <button type="button" class="btn ghost" id="evCancel">Cancel</button>
-          ${isEdit ? '<button type="button" class="btn ghost" id="evDelete" style="color:var(--red);">Delete</button>' : ''}
-          <span class="reply-status" id="evStatus"></span>
-        </div>
-      </div>`;
+        <textarea id="evNotes" placeholder="Agenda, context…">${escapeHtml(event?.notes || '')}</textarea>`,
+      actions: actionButtons(isEdit ? 'Save changes' : 'Add event', { destructive: isEdit ? 'Delete' : null }),
+    });
 
-    document.getElementById('evTitle').focus();
-    document.getElementById('evCancel').addEventListener('click', closeEditor);
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
 
-    document.getElementById('evSave').addEventListener('click', async () => {
-      const status = document.getElementById('evStatus');
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
       const title = document.getElementById('evTitle').value.trim();
       const startRaw = document.getElementById('evStart').value;
-      if (!title) { status.textContent = 'Give it a title.'; return; }
-      if (!startRaw) { status.textContent = 'Pick a start time.'; return; }
+      if (!title) { modalStatus('Give it a title.'); return; }
+      if (!startRaw) { modalStatus('Pick a start time.'); return; }
 
       const endRaw = document.getElementById('evEnd').value;
       if (endRaw && new Date(endRaw) < new Date(startRaw)) {
-        status.textContent = 'End time is before the start time.';
+        modalStatus('End time is before the start time.');
         return;
       }
 
-      const payload = {
-        title,
-        startsAt: new Date(startRaw).toISOString(),
-        endsAt: endRaw ? new Date(endRaw).toISOString() : null,
-        allDay: document.getElementById('evAllDay').checked,
-        location: document.getElementById('evLocation').value.trim() || null,
-        notes: document.getElementById('evNotes').value.trim() || null,
-      };
-
-      status.textContent = 'Saving…';
+      modalStatus('Saving…');
       try {
         const res = await fetch(isEdit ? `/api/calendar/events/${event.id}` : '/api/calendar/events', {
           method: isEdit ? 'PATCH' : 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            title,
+            startsAt: new Date(startRaw).toISOString(),
+            endsAt: endRaw ? new Date(endRaw).toISOString() : null,
+            allDay: document.getElementById('evAllDay').checked,
+            location: document.getElementById('evLocation').value.trim() || null,
+            notes: document.getElementById('evNotes').value.trim() || null,
+          }),
         });
         const saved = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(saved.error || 'Could not save.');
-        closeEditor();
+        closeModal();
         loadCalendar();
         if (saved.mirrorWarning) {
           showBanner(`Saved here, but it couldn't be mirrored to Google — Calendly may still book over this slot. ${saved.mirrorWarning}`, 'error');
         }
       } catch (err) {
-        status.textContent = err.message;
+        modalStatus(err.message);
       }
-    });
+    };
 
-    if (isEdit) {
-      document.getElementById('evDelete').addEventListener('click', async () => {
-        if (!confirm(`Delete "${event.title}"?`)) return;
-        const status = document.getElementById('evStatus');
-        status.textContent = 'Deleting…';
-        try {
-          const res = await fetch(`/api/calendar/events/${event.id}`, { method: 'DELETE' });
-          if (!res.ok) throw new Error('Could not delete.');
-          closeEditor();
-          loadCalendar();
-        } catch (err) {
-          status.textContent = err.message;
-        }
-      });
-    }
+    const del = modal.querySelector('[data-modal="delete"]');
+    if (del) del.onclick = async () => {
+      if (!confirm(`Delete "${event.title}"?`)) return;
+      modalStatus('Deleting…');
+      try {
+        const res = await fetch(`/api/calendar/events/${event.id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Could not delete.');
+        closeModal();
+        loadCalendar();
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
   }
 
   document.getElementById('calGrid').addEventListener('click', (e) => {
