@@ -4,9 +4,46 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pocket Data Office</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  ============================================================================
+  Pocket Data Office - single-file front end (markup + CSS + JS).
+
+  Kept as one file deliberately: there is no build step, and the server
+  serves this directly. Navigate by the markers below rather than scrolling;
+  grep for the exact strings shown.
+
+  CSS            <style> ... </style>
+    Design tokens sit at the top of :root. The palette comes from the
+    reference design (see docs/DESIGN.md) - warm cream, #1800ad accent.
+    Legacy names (--brand, --paper, --line ...) are aliases pointing at the
+    new tokens, which is why restyling worked without touching every rule.
+
+  MARKUP         grep '================= <NAME>'
+    DASHBOARD  INBOX  CALENDAR  SCHEDULING  CRM  PROJECTS  TICKETS
+    FILES  FINANCE  PEOPLE  INTEGRATIONS  SPEC
+    PROJECTS / FILES / PEOPLE / SPEC are still hardcoded mockup markup.
+    Everything else renders from the API.
+
+  JS             grep '// --- <NAME> ---'
+    Mail . Wave connection . Finance . Dashboard . Inbox: master-detail
+    Modal dialogs . Service desk . CRM . Scheduling
+    Google Calendar bridge . Calendly . Calendar
+
+  Conventions
+    - Every view is a .view div; goto(id) toggles .hidden. Nav buttons carry
+      data-view; any element with data-goto jumps between views.
+    - Create/edit flows call openModal({kicker,title,body,actions}) and wire
+      buttons via [data-modal="save"|"cancel"|"delete"]. Do not add new
+      inline editors - the modal is the pattern.
+    - escapeHtml() everything interpolated into innerHTML. Mail and CRM
+      content is attacker-influenced.
+    - money(cents, recurring) formats money; it is integer cents everywhere.
+    - Loaders are named load<Thing>(); each ends by calling renderDashboard()
+      so the dashboard recomputes from whatever data has landed.
+    - Missing data renders as a dash with a note explaining why. Never
+      invent placeholder figures - see docs/DESIGN.md.
+  ============================================================================
+-->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">

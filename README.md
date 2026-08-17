@@ -361,6 +361,14 @@ that touches email and financial data. Happy to help implement each
 piece (the Graph/Wave OAuth flows, wiring up `oauth_tokens`) when you're
 ready to build the real backend behind this front end.
 
+## Documentation
+
+- `CLAUDE.md` - how to work in this repo (deploys, conventions, constraints)
+- `HANDOFF.md` - current state, outstanding work, project IDs
+- `docs/SCHEMA.md` - tables, relationships, and what will bite
+- `docs/DESIGN.md` - the design system, extracted from the reference
+- `scripts/smoke-test.sh` - regression checks for paths that broke before
+
 ## Structure
 
 ```
@@ -380,6 +388,10 @@ lib/scheduling.js       booking pages: availability, slot maths, bookings
 lib/crm.js              clients, contacts, and inbox sender matching
 lib/tickets.js          service desk, including SLA-to-calendar projection
 lib/wave.js             Wave GraphQL client: invoices into Finance
+scripts/smoke-test.sh   regression checks against a running instance
+docs/SCHEMA.md          tables and relationships
+docs/DESIGN.md          design tokens and layout specs
+CLAUDE.md               working notes for Claude Code
 package.json
 .env.example          placeholders for the secrets you'll need
 ```

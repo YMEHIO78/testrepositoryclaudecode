@@ -1,0 +1,112 @@
+# CLAUDE.md
+
+Project context for Claude Code. Read `HANDOFF.md` for current state and
+outstanding work; this file covers how to work in the repo.
+
+## What this is
+
+Internal ops app for a small data consultancy: mail, calendar, booking
+pages, CRM, service desk, and accounting figures in one place. Plain
+Node + Express + Postgres, no framework, **no build step**. Deployed on
+Railway, live at
+https://pocket-data-office-production.up.railway.app
+
+## Working on it
+
+### There is no local runtime
+
+Node, npm, `gh` and the Railway CLI are **not installed** on the dev
+machine. You cannot run the app, install packages, or `node --check` a
+file. Perl is available; `python` is a Windows Store alias and does not
+work.
+
+**The deploy is the test.** Read changed code carefully before pushing —
+a syntax error costs a full deploy cycle to discover.
+
+### Deploying
+
+Pushing to GitHub does **not** reliably trigger a deploy, and Railway's
+plain "redeploy" rebuilds the *previous* commit. Always deploy by SHA
+using the Railway MCP agent:
+
+> Deploy commit `<sha>` for service `24ed1c72-0af5-4dc6-bee4-ea4abdaee4ad`.
+
+Builds take **about three minutes**. `get-logs` returns an empty array
+while a build is in progress — that is not evidence of a hang. Wait for
+the status to change to SUCCESS before concluding anything.
+
+### Verifying
+
+`scripts/smoke-test.sh` exercises the paths that have broken before.
+Run it after any change touching mail, calendar, scheduling, tickets,
+CRM, or Wave:
+
+```bash
+AUTH_USER=... AUTH_PASS=... bash scripts/smoke-test.sh
+```
+
+It only reads and cleans up after itself, but it does create and delete
+records against the live app, so don't run it while someone is using it.
+
+### Shell gotcha
+
+The Windows shell mangles non-ASCII in command arguments. Testing UTF-8
+by passing characters through `curl -d` produces **false** corruption
+reports. Write the payload to a file and use `--data-binary @file`.
+
+## Conventions that matter
+
+- **Money is integer cents** everywhere — DB, API, and JS. Only the UI
+  converts to dollars. Wave's `Money.minorUnitValue` is already cents,
+  which is why it drops straight in.
+- **Never invent placeholder figures.** Anything without a real data
+  source renders as `—` with a note saying why. A plausible-looking
+  invented number on a dashboard someone acts on is worse than a visible
+  gap. This has been decided deliberately; don't "improve" it.
+- **Validate credentials before storing them.** Mail, Calendly and Wave
+  all test against the real service on connect so a bad value fails
+  immediately with the provider's own error, rather than producing a
+  silently empty view later.
+- **Synced records are read-only locally.** Calendly bookings and
+  ticket-SLA calendar entries return 409 on edit/delete, because the next
+  sync would overwrite the change.
+- **Secrets never go in the repo or in chat.** They live in Railway
+  variables. If a rotation is needed, *the user* does it — anything
+  Claude generates ends up in a transcript.
+- **`escapeHtml()` everything** interpolated into `innerHTML`. Mail
+  bodies and CRM fields are attacker-influenced.
+
+## Architecture notes
+
+`server.js` holds every route. Order matters: routes registered **before**
+the auth-gate middleware are public, and three things depend on that —
+the `.ics` calendar feed, the public booking pages, and `/healthz`.
+Calendar clients and booking visitors cannot authenticate.
+
+`public/index.html` is the whole front end in one file (~2,700 lines).
+It opens with a section map; navigate by grepping the markers rather than
+scrolling.
+
+`lib/migrate.js` runs on every boot and is idempotent — it is the schema
+source of truth. See `docs/SCHEMA.md` for the tables and how they relate.
+
+## Constraints that are settled
+
+Do not re-investigate these; each cost significant time to establish and
+is documented in `HANDOFF.md`:
+
+- **Outlook mail and Outlook Calendar are impossible.** The domain is on
+  Hostinger, not Microsoft 365. Mail runs over IMAP/SMTP.
+- **Calendly cannot be told about busy time.** Its availability API is
+  read-only.
+- **Wave uses a Full Access Token, not OAuth.** OAuth requires the end
+  user's business to be on a paid tier.
+- **Do not build the "AI Agent" view** that appears in the design
+  reference. The project README explicitly rules it out.
+
+## Design
+
+The app follows a reference design supplied by the user. Its tokens and
+layout specs are captured in `docs/DESIGN.md`, so the original bundle is
+not needed. Create and edit flows open in modal dialogs — do not add new
+inline editors.
