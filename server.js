@@ -524,6 +524,17 @@ app.put('/api/scheduling/timezone', express.json(), async (req, res) => {
   }
 });
 
+app.delete('/api/scheduling/bookings/:id', async (req, res) => {
+  try {
+    const result = await scheduling.cancelBookingById(Number(req.params.id));
+    if (!result) return res.status(404).json({ error: 'Not found.' });
+    res.status(204).end();
+  } catch (err) {
+    console.error('Failed to cancel booking:', err);
+    res.status(500).json({ error: 'Could not cancel that booking.' });
+  }
+});
+
 app.get('/api/scheduling/bookings', async (req, res) => {
   try {
     res.json(await scheduling.listBookings({ upcomingOnly: req.query.all !== '1' }));

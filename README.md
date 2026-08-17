@@ -172,7 +172,14 @@ Mechanics worth knowing:
 - **The public booking endpoint is rate limited** (10 per hour per IP),
   since it's unauthenticated and writes to the calendar.
 - **Cancelling frees the slot** by deleting the calendar event; the
-  booking row is kept, marked cancelled, as a record.
+  booking row is kept, marked cancelled, as a record. Either side can
+  cancel: the invitee via the link in their confirmation email, or you
+  via **Cancel** on the Scheduling page (for when someone cancels by
+  phone instead). Owner-side cancellation does not email the invitee —
+  tell them yourself.
+- **Booking-created events are read-only on the calendar** like other
+  synced events, so they can't be edited into an inconsistent state.
+  Cancel them through Scheduling rather than deleting the calendar entry.
 
 ## Google Calendar (double-booking prevention)
 

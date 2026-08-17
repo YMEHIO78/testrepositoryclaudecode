@@ -975,18 +975,40 @@
       const list = await (await fetch('/api/scheduling/bookings')).json();
       wrap.innerHTML = list.length
         ? list.map(b => `
-            <div class="int-row">
+            <div class="int-row" data-booking="${b.id}">
               <span style="flex:1;">
                 <b>${escapeHtml(b.inviteeName)}</b> <span class="msg-snippet">· ${escapeHtml(b.eventTypeName || 'Meeting')}</span><br>
                 <span class="msg-snippet">${escapeHtml(b.inviteeEmail)}${b.notes ? ' · ' + escapeHtml(b.notes) : ''}</span>
               </span>
-              <span class="msg-snippet">${b.startsAt ? new Date(b.startsAt).toLocaleString() : '—'}</span>
+              <span style="display:flex;gap:8px;align-items:center;">
+                <span class="msg-snippet">${b.startsAt ? new Date(b.startsAt).toLocaleString() : '—'}</span>
+                <button type="button" class="int-btn connected sch-cancel">Cancel</button>
+              </span>
             </div>`).join('')
         : '<p class="msg-snippet">No upcoming bookings.</p>';
     } catch (err) {
       wrap.innerHTML = '<p class="msg-snippet">Bookings unavailable.</p>';
     }
   }
+
+  document.getElementById('schBookings').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.sch-cancel');
+    if (!btn) return;
+    const row = btn.closest('.int-row');
+    if (!confirm("Cancel this booking? The slot is freed immediately. The invitee is not notified automatically — tell them yourself.")) return;
+    btn.disabled = true;
+    btn.textContent = 'Cancelling…';
+    try {
+      const res = await fetch(`/api/scheduling/bookings/${row.dataset.booking}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('failed');
+      loadBookings();
+      loadCalendar();
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Cancel';
+      alert('Could not cancel that booking.');
+    }
+  });
 
   function openTypeEditor(type){
     const isEdit = !!type;
