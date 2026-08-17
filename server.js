@@ -171,6 +171,21 @@ app.get('/api/mailboxes', async (req, res) => {
   res.json(configuredMailboxes().map((email) => ({ email, connected: connected.has(email) })));
 });
 
+// Diagnostic: what's actually in each stored token (claims only, never
+// the token itself). Behind the auth gate like everything else.
+app.get('/api/mailboxes/diagnose', async (req, res) => {
+  const accounts = await msgraph.listConnectedAccounts();
+  const report = await Promise.all(accounts.map(async (account) => {
+    try {
+      const accessToken = await msgraph.getValidAccessToken(account);
+      return { account, token: msgraph.describeToken(accessToken) };
+    } catch (err) {
+      return { account, error: err.message };
+    }
+  }));
+  res.json(report);
+});
+
 app.post('/api/mailboxes/disconnect', express.json(), async (req, res) => {
   const { email } = req.body || {};
   if (!configuredMailboxes().includes(email)) {
