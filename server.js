@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const { pool } = require('./lib/db');
 const { migrate } = require('./lib/migrate');
 const mail = require('./lib/mail');
+const calendar = require('./lib/calendar');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,6 +25,25 @@ const PORT = process.env.PORT || 3000;
 app.set('trust proxy', true);
 
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
+
+// Public .ics subscription feed — deliberately outside the login gate,
+// because Apple/Google/Outlook calendar clients poll this URL and can't
+// authenticate through a session. The secret token in the path is what
+// protects it, so treat that URL as a credential.
+app.get('/calendar/:token/pocket-data-office.ics', async (req, res) => {
+  try {
+    if (!(await calendar.feedTokenMatches(req.params.token))) {
+      return res.status(404).send('Not found.');
+    }
+    const events = await calendar.listEvents();
+    res.type('text/calendar; charset=utf-8');
+    res.set('Cache-Control', 'no-cache');
+    res.send(calendar.toICS(events));
+  } catch (err) {
+    console.error('Failed to build calendar feed:', err);
+    res.status(500).send('Could not build calendar feed.');
+  }
+});
 
 app.use(session({
   store: new pgSession({ pool, createTableIfMissing: true }),
@@ -199,6 +219,69 @@ app.post('/api/inbox/reply', express.json(), async (req, res) => {
     console.error('Failed to send reply:', err);
     res.status(502).json({ error: `Failed to send reply: ${err.message}` });
   }
+});
+
+// --- Calendar ---
+
+app.get('/api/calendar/events', async (req, res) => {
+  try {
+    res.json(await calendar.listEvents({ from: req.query.from, to: req.query.to }));
+  } catch (err) {
+    console.error('Failed to list events:', err);
+    res.status(500).json({ error: 'Could not load events.' });
+  }
+});
+
+app.post('/api/calendar/events', express.json(), async (req, res) => {
+  const { title, startsAt } = req.body || {};
+  if (!title || !startsAt) {
+    return res.status(400).json({ error: 'title and startsAt are required.' });
+  }
+  if (isNaN(new Date(startsAt))) {
+    return res.status(400).json({ error: 'startsAt is not a valid date.' });
+  }
+  try {
+    res.status(201).json(await calendar.createEvent(req.body));
+  } catch (err) {
+    console.error('Failed to create event:', err);
+    res.status(500).json({ error: 'Could not create the event.' });
+  }
+});
+
+app.patch('/api/calendar/events/:id', express.json(), async (req, res) => {
+  try {
+    const updated = await calendar.updateEvent(Number(req.params.id), req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Event not found.' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Failed to update event:', err);
+    res.status(500).json({ error: 'Could not update the event.' });
+  }
+});
+
+app.delete('/api/calendar/events/:id', async (req, res) => {
+  try {
+    const removed = await calendar.deleteEvent(Number(req.params.id));
+    if (!removed) return res.status(404).json({ error: 'Event not found.' });
+    res.status(204).end();
+  } catch (err) {
+    console.error('Failed to delete event:', err);
+    res.status(500).json({ error: 'Could not delete the event.' });
+  }
+});
+
+function feedUrlFor(req, token) {
+  return `${req.protocol}://${req.get('host')}/calendar/${token}/pocket-data-office.ics`;
+}
+
+app.get('/api/calendar/feed', async (req, res) => {
+  const token = await calendar.getFeedToken();
+  res.json({ url: feedUrlFor(req, token) });
+});
+
+app.post('/api/calendar/feed/rotate', async (req, res) => {
+  const token = await calendar.rotateFeedToken();
+  res.json({ url: feedUrlFor(req, token) });
 });
 
 app.use(express.static(path.join(__dirname, 'public')));

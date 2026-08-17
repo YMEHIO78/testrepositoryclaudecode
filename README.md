@@ -72,6 +72,37 @@ Note that an IMAP password grants full mailbox access and can't be
 scoped the way an OAuth token can. Use a dedicated app password if your
 provider supports one.
 
+## Calendar
+
+The calendar is native — events live in this app's `calendar_events`
+table rather than in an external provider. That's partly by necessity
+(no Exchange, and no CalDAV endpoint on this domain) and partly because
+much of what belongs on this calendar — ticket SLA dates, project
+milestones — originates here anyway and no external provider could own
+it.
+
+Create, edit, and delete events on the **Calendar** page.
+
+**Getting it onto your devices:** the same page shows a subscription URL
+ending in `.ics`. Add it as a subscribed calendar in Apple Calendar,
+Google Calendar, or Outlook and events appear there, refreshing on
+whatever interval that client uses (typically 15–60 minutes; the feed
+advertises 30).
+
+That URL is served *outside* the login gate, because calendar clients
+poll it without a session and can't authenticate. The random token in
+the path is the only thing protecting it, so:
+
+- Treat the URL as a credential — anyone holding it can read every event.
+- It's read-only; subscribing can't modify anything here.
+- **Reset URL** on the Calendar page rotates the token, which immediately
+  breaks any device still using the old one.
+
+`source` on each event marks where it came from (`manual` today). When
+Tickets and Projects become real database records, their dates can be
+written in as `ticket`/`project` rows and will appear on the grid and in
+the feed with no further changes.
+
 ## Security — done so far, and what's still on you
 
 Railway's proxy secures the network path to your app. On top of that,
@@ -112,9 +143,10 @@ public/index.html   the app (dashboard, CRM, tickets, projects, finance, spec)
 views/login.html     login form (served outside the auth gate)
 server.js             Express server: session auth, rate limiting, static serving, mail routes
 lib/db.js             Postgres connection pool
-lib/migrate.js         creates the mail_accounts / oauth_tokens tables on startup
+lib/migrate.js         creates the app's tables on startup
 lib/crypto.js           AES-256-GCM helpers for encrypting credentials at rest
 lib/mail.js             IMAP reading + SMTP sending
+lib/calendar.js         calendar events + .ics feed generation
 package.json
 .env.example          placeholders for the secrets you'll need
 ```

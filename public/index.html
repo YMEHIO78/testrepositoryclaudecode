@@ -130,6 +130,25 @@
   .cal-day .d{color:var(--muted);font-family:'IBM Plex Mono',monospace;}
   .cal-ev{background:var(--brand-soft);color:var(--brand);border-radius:4px;padding:2px 5px;font-size:10.5px;margin-top:3px;}
   .cal-head{background:var(--paper);text-align:center;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);padding:6px 0;font-weight:600;}
+  .cal-day.outside{background:var(--paper);}
+  .cal-day.outside .d{opacity:.45;}
+  .cal-day.today .d{background:var(--brand);color:#fff;border-radius:4px;padding:1px 5px;}
+  .cal-day{cursor:pointer;}
+  .cal-day:hover{background:#faf9f6;}
+  .cal-ev{cursor:pointer;text-align:left;display:block;width:100%;border:none;font-family:inherit;}
+  .cal-ev:hover{filter:brightness(.95);}
+  .cal-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+  .cal-toolbar b{min-width:150px;text-align:center;}
+  .cal-editor{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:12px;}
+  .cal-editor label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:10px 0 4px;font-weight:600;}
+  .cal-editor label:first-child{margin-top:0;}
+  .cal-editor input[type=text],.cal-editor input[type=datetime-local],.cal-editor input[type=date],.cal-editor textarea{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);}
+  .cal-editor textarea{min-height:60px;resize:vertical;}
+  .cal-editor .cols{display:flex;gap:10px;}
+  .cal-editor .cols > div{flex:1;}
+  .cal-editor .actions{display:flex;gap:8px;align-items:center;margin-top:14px;}
+  .cal-checkbox{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:400;}
+  .cal-checkbox input{width:auto;}
 
   .spec-block{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:14px;}
   .spec-block h3{margin:0 0 6px;font-size:15px;}
@@ -255,7 +274,7 @@
       <h1>Inbox</h1>
       <p class="sub" id="inboxSub">Loading messages…</p>
       <div class="card" id="inboxMessages"></div>
-      <div class="note"><b>How this works.</b> Connected Outlook inboxes are read directly through Microsoft Graph — no separate embed or bridge tool is needed to see it here. See <a href="#" data-goto="spec">System spec</a> for the automation details.</div>
+      <div class="note"><b>How this works.</b> Connected mailboxes are read over IMAP and replies go out over SMTP, straight from this app. Manage credentials under <a href="#" data-goto="integrations">Integrations</a>.</div>
       <div class="card" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn">Create ticket from this email</button>
         <button class="btn ghost">Log to contact timeline</button>
@@ -266,18 +285,33 @@
     <!-- ================= CALENDAR ================= -->
     <div class="view hidden" id="view-calendar">
       <h1>Calendar</h1>
-      <p class="sub">August 2026 · synced from Outlook Calendar (admin@)</p>
-      <div class="cal-grid">
-        <div class="cal-head">Mon</div><div class="cal-head">Tue</div><div class="cal-head">Wed</div><div class="cal-head">Thu</div><div class="cal-head">Fri</div><div class="cal-head">Sat</div><div class="cal-head">Sun</div>
-        <div class="cal-day"><span class="d">10</span></div>
-        <div class="cal-day"><span class="d">11</span><div class="cal-ev">10a Ridgeline review</div><div class="cal-ev">2p Discovery call</div></div>
-        <div class="cal-day"><span class="d">12</span><div class="cal-ev">SLA due — TKT-118</div></div>
-        <div class="cal-day"><span class="d">13</span></div>
-        <div class="cal-day"><span class="d">14</span><div class="cal-ev">Marlowe milestone</div></div>
-        <div class="cal-day"><span class="d">15</span></div>
-        <div class="cal-day"><span class="d">16</span></div>
+      <p class="sub">Events live in this app. Subscribe from your phone or laptop with the feed URL below.</p>
+
+      <div class="cal-toolbar">
+        <button type="button" class="btn ghost" id="calPrev">←</button>
+        <b id="calMonthLabel">…</b>
+        <button type="button" class="btn ghost" id="calNext">→</button>
+        <button type="button" class="btn ghost" id="calToday">Today</button>
+        <button type="button" class="btn" id="calAdd">Add event</button>
       </div>
-      <div class="note">Milestone and SLA due dates are pulled from Projects and Tickets, so a slipped project due date moves on this grid automatically. Everything else comes straight from Outlook Calendar.</div>
+
+      <div id="calEditor"></div>
+
+      <div class="cal-grid" id="calGrid">
+        <div class="cal-head">Mon</div><div class="cal-head">Tue</div><div class="cal-head">Wed</div><div class="cal-head">Thu</div><div class="cal-head">Fri</div><div class="cal-head">Sat</div><div class="cal-head">Sun</div>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Subscribe to this calendar</h3>
+        <p class="msg-snippet" style="margin-bottom:8px;">Add this URL as a subscribed calendar in Apple Calendar, Google Calendar, or Outlook. It updates automatically and is read-only on their side. Anyone with the URL can read your events, so treat it like a password.</p>
+        <div class="row" style="display:flex;gap:8px;align-items:center;">
+          <input type="text" id="calFeedUrl" readonly style="flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:'IBM Plex Mono',monospace;background:var(--paper);color:var(--ink);">
+          <button type="button" class="btn ghost" id="calCopyFeed">Copy</button>
+          <button type="button" class="btn ghost" id="calRotateFeed">Reset URL</button>
+        </div>
+      </div>
+
+      <div class="note">Ticket SLA dates and project milestones aren't shown yet — those live in the mockup markup rather than the database. Once Tickets and Projects are real records they can be projected onto this grid and into the feed automatically.</div>
     </div>
 
     <!-- ================= CRM ================= -->
@@ -401,8 +435,18 @@
         <div class="int-label">Mailboxes</div>
         <div id="intMailAccounts"><div class="int-row"><span class="msg-snippet">Loading…</span></div></div>
 
-        <div class="int-label" style="margin-top:14px;">Calendar</div>
-        <div class="int-row"><span class="msg-snippet">Not available — this domain's mail is hosted outside Microsoft 365, so Outlook Calendar can't be used. Needs a CalDAV or provider-specific integration.</span></div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <h3 style="margin-bottom:2px;">Calendar</h3>
+        <p class="msg-snippet" style="margin-bottom:12px;">Hosted in this app — events live in its own database, published as a subscribe-able .ics feed.</p>
+        <div class="int-row">
+          <span>Built-in calendar</span>
+          <span class="int-btn connected" style="cursor:default;">Active</span>
+        </div>
+        <div class="int-row">
+          <span class="msg-snippet">Subscription URL and event management are on the <a href="#" data-goto="calendar">Calendar</a> page.</span>
+        </div>
       </div>
 
       <div class="card">
@@ -803,10 +847,249 @@
     }
   });
 
-  (function initMail(){
+  // --- Calendar ---
+  let calCursor = new Date();
+  let calEvents = [];
+
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  function startOfMonthGrid(date){
+    const first = new Date(date.getFullYear(), date.getMonth(), 1);
+    // Grid starts Monday; getDay() is Sunday-based.
+    const offset = (first.getDay() + 6) % 7;
+    return new Date(first.getFullYear(), first.getMonth(), 1 - offset);
+  }
+
+  function sameDay(a, b){
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  function localDateKey(d){
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  function eventTimeLabel(ev){
+    if (ev.allDay) return '';
+    const d = new Date(ev.startsAt);
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const suffix = h < 12 ? 'a' : 'p';
+    h = h % 12 || 12;
+    return m ? `${h}:${String(m).padStart(2,'0')}${suffix} ` : `${h}${suffix} `;
+  }
+
+  async function loadCalendar(){
+    const gridStart = startOfMonthGrid(calCursor);
+    const gridEnd = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + 42);
+    try {
+      const res = await fetch(`/api/calendar/events?from=${gridStart.toISOString()}&to=${gridEnd.toISOString()}`);
+      calEvents = res.ok ? await res.json() : [];
+    } catch (err) {
+      calEvents = [];
+    }
+    renderCalendar();
+  }
+
+  function renderCalendar(){
+    const grid = document.getElementById('calGrid');
+    document.getElementById('calMonthLabel').textContent = `${MONTHS[calCursor.getMonth()]} ${calCursor.getFullYear()}`;
+
+    // Group events by local day.
+    const byDay = {};
+    for (const ev of calEvents) {
+      const key = localDateKey(new Date(ev.startsAt));
+      (byDay[key] = byDay[key] || []).push(ev);
+    }
+
+    // Keep the 7 weekday headers, replace the day cells.
+    grid.querySelectorAll('.cal-day').forEach(el => el.remove());
+
+    const start = startOfMonthGrid(calCursor);
+    const today = new Date();
+    for (let i = 0; i < 42; i++) {
+      const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      const cell = document.createElement('div');
+      cell.className = 'cal-day'
+        + (day.getMonth() === calCursor.getMonth() ? '' : ' outside')
+        + (sameDay(day, today) ? ' today' : '');
+      cell.dataset.date = localDateKey(day);
+
+      const evs = (byDay[localDateKey(day)] || [])
+        .sort((a,b) => new Date(a.startsAt) - new Date(b.startsAt));
+
+      cell.innerHTML = `<span class="d">${day.getDate()}</span>`
+        + evs.map(ev => `<button type="button" class="cal-ev" data-id="${ev.id}">${escapeHtml(eventTimeLabel(ev) + ev.title)}</button>`).join('');
+      grid.appendChild(cell);
+    }
+  }
+
+  function closeEditor(){ document.getElementById('calEditor').innerHTML = ''; }
+
+  function openEditor(event, defaultDateKey){
+    const wrap = document.getElementById('calEditor');
+    const isEdit = !!event;
+
+    // datetime-local wants local wall-clock, not UTC.
+    const toLocalInput = (iso) => {
+      const d = new Date(iso);
+      const pad = n => String(n).padStart(2,'0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+
+    const startVal = isEdit ? toLocalInput(event.startsAt) : `${defaultDateKey || localDateKey(new Date())}T09:00`;
+    const endVal = isEdit && event.endsAt ? toLocalInput(event.endsAt) : '';
+
+    wrap.innerHTML = `
+      <div class="cal-editor">
+        <label>Title</label>
+        <input type="text" id="evTitle" value="${escapeHtml(event?.title || '')}" placeholder="Meeting title">
+        <div class="cols">
+          <div>
+            <label>Starts</label>
+            <input type="datetime-local" id="evStart" value="${startVal}">
+          </div>
+          <div>
+            <label>Ends <span class="msg-snippet">(optional)</span></label>
+            <input type="datetime-local" id="evEnd" value="${endVal}">
+          </div>
+        </div>
+        <label class="cal-checkbox"><input type="checkbox" id="evAllDay" ${event?.allDay ? 'checked' : ''}> All day</label>
+        <label>Location</label>
+        <input type="text" id="evLocation" value="${escapeHtml(event?.location || '')}" placeholder="Zoom link, address…">
+        <label>Notes</label>
+        <textarea id="evNotes" placeholder="Agenda, context…">${escapeHtml(event?.notes || '')}</textarea>
+        <div class="actions">
+          <button type="button" class="btn" id="evSave">${isEdit ? 'Save changes' : 'Add event'}</button>
+          <button type="button" class="btn ghost" id="evCancel">Cancel</button>
+          ${isEdit ? '<button type="button" class="btn ghost" id="evDelete" style="color:var(--red);">Delete</button>' : ''}
+          <span class="reply-status" id="evStatus"></span>
+        </div>
+      </div>`;
+
+    document.getElementById('evTitle').focus();
+    document.getElementById('evCancel').addEventListener('click', closeEditor);
+
+    document.getElementById('evSave').addEventListener('click', async () => {
+      const status = document.getElementById('evStatus');
+      const title = document.getElementById('evTitle').value.trim();
+      const startRaw = document.getElementById('evStart').value;
+      if (!title) { status.textContent = 'Give it a title.'; return; }
+      if (!startRaw) { status.textContent = 'Pick a start time.'; return; }
+
+      const endRaw = document.getElementById('evEnd').value;
+      if (endRaw && new Date(endRaw) < new Date(startRaw)) {
+        status.textContent = 'End time is before the start time.';
+        return;
+      }
+
+      const payload = {
+        title,
+        startsAt: new Date(startRaw).toISOString(),
+        endsAt: endRaw ? new Date(endRaw).toISOString() : null,
+        allDay: document.getElementById('evAllDay').checked,
+        location: document.getElementById('evLocation').value.trim() || null,
+        notes: document.getElementById('evNotes').value.trim() || null,
+      };
+
+      status.textContent = 'Saving…';
+      try {
+        const res = await fetch(isEdit ? `/api/calendar/events/${event.id}` : '/api/calendar/events', {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Could not save.');
+        }
+        closeEditor();
+        loadCalendar();
+      } catch (err) {
+        status.textContent = err.message;
+      }
+    });
+
+    if (isEdit) {
+      document.getElementById('evDelete').addEventListener('click', async () => {
+        if (!confirm(`Delete "${event.title}"?`)) return;
+        const status = document.getElementById('evStatus');
+        status.textContent = 'Deleting…';
+        try {
+          const res = await fetch(`/api/calendar/events/${event.id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('Could not delete.');
+          closeEditor();
+          loadCalendar();
+        } catch (err) {
+          status.textContent = err.message;
+        }
+      });
+    }
+  }
+
+  document.getElementById('calGrid').addEventListener('click', (e) => {
+    const evBtn = e.target.closest('.cal-ev');
+    if (evBtn) {
+      const ev = calEvents.find(x => String(x.id) === evBtn.dataset.id);
+      if (ev) openEditor(ev);
+      return;
+    }
+    const cell = e.target.closest('.cal-day');
+    if (cell) openEditor(null, cell.dataset.date);
+  });
+
+  document.getElementById('calPrev').addEventListener('click', () => {
+    calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth() - 1, 1);
+    loadCalendar();
+  });
+  document.getElementById('calNext').addEventListener('click', () => {
+    calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth() + 1, 1);
+    loadCalendar();
+  });
+  document.getElementById('calToday').addEventListener('click', () => {
+    calCursor = new Date();
+    loadCalendar();
+  });
+  document.getElementById('calAdd').addEventListener('click', () => openEditor(null, localDateKey(new Date())));
+
+  async function loadFeedUrl(){
+    try {
+      const res = await fetch('/api/calendar/feed');
+      const { url } = await res.json();
+      document.getElementById('calFeedUrl').value = url;
+    } catch (err) {
+      document.getElementById('calFeedUrl').value = 'Unavailable';
+    }
+  }
+
+  document.getElementById('calCopyFeed').addEventListener('click', async () => {
+    const input = document.getElementById('calFeedUrl');
+    const btn = document.getElementById('calCopyFeed');
+    try {
+      await navigator.clipboard.writeText(input.value);
+    } catch (err) {
+      input.select(); // clipboard API blocked — let them copy manually
+    }
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+  });
+
+  document.getElementById('calRotateFeed').addEventListener('click', async () => {
+    if (!confirm('Reset the feed URL? Any device already subscribed will stop updating until you give it the new URL.')) return;
+    try {
+      const res = await fetch('/api/calendar/feed/rotate', { method: 'POST' });
+      const { url } = await res.json();
+      document.getElementById('calFeedUrl').value = url;
+    } catch (err) {
+      alert('Could not reset the feed URL.');
+    }
+  });
+
+  (function init(){
     loadMailboxes();
     loadInbox();
     loadIntegrations();
+    loadCalendar();
+    loadFeedUrl();
   })();
 </script>
 </body>
