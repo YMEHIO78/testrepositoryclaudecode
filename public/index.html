@@ -113,6 +113,13 @@
   .int-btn.connected{background:var(--green-soft);color:var(--green);}
   .int-btn.connected:hover{background:var(--red-soft);color:var(--red);}
   .int-btn.disconnected{background:var(--brand);color:#fff;}
+  .connect-form{padding:12px;margin:4px 0 10px;background:var(--paper);border:1px solid var(--line);border-radius:8px;}
+  .connect-form label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:10px 0 4px;font-weight:600;}
+  .connect-form label:first-child{margin-top:0;}
+  .connect-form label .msg-snippet{text-transform:none;letter-spacing:0;font-weight:400;}
+  .connect-form input{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:13px;font-family:inherit;background:var(--panel);color:var(--ink);}
+  .connect-form .row{display:flex;gap:8px;align-items:center;}
+  .cf-advanced{margin-top:4px;}
 
   .btn{display:inline-flex;align-items:center;gap:6px;background:var(--brand);color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;}
   .btn.ghost{background:none;border:1px solid var(--line);color:var(--ink);}
@@ -388,14 +395,14 @@
       <p class="sub">Connect or disconnect the external accounts this app reads from and acts on.</p>
 
       <div class="card" style="margin-bottom:14px;">
-        <h3 style="margin-bottom:2px;">Outlook</h3>
-        <p class="msg-snippet" style="margin-bottom:12px;">Microsoft Graph · delegated permissions (Mail.Read, Mail.Send, offline_access)</p>
+        <h3 style="margin-bottom:2px;">Mail</h3>
+        <p class="msg-snippet" style="margin-bottom:12px;">IMAP for reading · SMTP for sending. Passwords are encrypted before storage and never sent back to the browser.</p>
 
-        <div class="int-label">Email</div>
-        <div id="intOutlookMail"><div class="int-row"><span class="msg-snippet">Loading…</span></div></div>
+        <div class="int-label">Mailboxes</div>
+        <div id="intMailAccounts"><div class="int-row"><span class="msg-snippet">Loading…</span></div></div>
 
         <div class="int-label" style="margin-top:14px;">Calendar</div>
-        <div class="int-row"><span class="msg-snippet">Not built yet — see <a href="#" data-goto="spec">System spec</a> for the plan.</span></div>
+        <div class="int-row"><span class="msg-snippet">Not available — this domain's mail is hosted outside Microsoft 365, so Outlook Calendar can't be used. Needs a CalDAV or provider-specific integration.</span></div>
       </div>
 
       <div class="card">
@@ -546,7 +553,7 @@
     el.addEventListener('click', (e) => { e.preventDefault(); goto(el.dataset.goto); });
   });
 
-  // --- Outlook mail (live via Microsoft Graph) ---
+  // --- Mail (live via IMAP/SMTP) ---
   function escapeHtml(s){
     return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
@@ -572,12 +579,15 @@
     const wrap = document.getElementById('mailboxChips');
     try {
       const res = await fetch('/api/mailboxes');
-      const boxes = await res.json();
-      if (!boxes.length) { wrap.innerHTML = '<span class="chip">No mailboxes configured</span>'; return; }
-      wrap.innerHTML = boxes.map(b => b.connected
+      const { mailboxes } = await res.json();
+      if (!mailboxes.length) { wrap.innerHTML = '<span class="chip">No mailboxes configured</span>'; return; }
+      wrap.innerHTML = mailboxes.map(b => b.connected
         ? `<span class="chip">${escapeHtml(b.email)}</span>`
-        : `<a class="chip" style="color:var(--brand);" href="/auth/microsoft/start?account=${encodeURIComponent(b.email)}">Connect ${escapeHtml(b.email)}</a>`
+        : `<a class="chip" style="color:var(--brand);" href="#" data-goto="integrations">Connect ${escapeHtml(b.email)}</a>`
       ).join(' ');
+      wrap.querySelectorAll('[data-goto]').forEach(el => {
+        el.addEventListener('click', (e) => { e.preventDefault(); goto('integrations'); });
+      });
     } catch (err) {
       wrap.innerHTML = '<span class="chip">Mailbox status unavailable</span>';
     }
@@ -587,13 +597,18 @@
     const initials = (m.from || '?').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
     const pill = m.isRead ? '<span class="pill grey">read</span>' : '<span class="pill red">unread</span>';
     return `
-      <div class="msg-row" data-id="${escapeHtml(m.id)}" data-account="${escapeHtml(m.account)}">
+      <div class="msg-row"
+           data-id="${escapeHtml(m.id)}"
+           data-account="${escapeHtml(m.account)}"
+           data-from="${escapeHtml(m.fromAddress)}"
+           data-subject="${escapeHtml(m.subject || '')}"
+           data-messageid="${escapeHtml(m.messageId || '')}">
         <div class="msg-row-top">
           <div class="avatar">${escapeHtml(initials)}</div>
           <div style="flex:1;">
             <div class="msg-meta">${escapeHtml(m.from)} · ${timeAgo(m.receivedDateTime)} · to ${escapeHtml(m.account)}</div>
             <div class="msg-subject">${escapeHtml(m.subject || '(no subject)')}</div>
-            <div class="msg-snippet">${escapeHtml(m.preview)}</div>
+            <div class="msg-snippet">${escapeHtml(m.fromAddress)}</div>
           </div>
           <div class="msg-actions">
             ${pill}
@@ -611,7 +626,7 @@
       if (!res.ok) throw new Error('request failed');
       const data = await res.json();
       if (!data.accounts.length) {
-        sub.textContent = 'No mailboxes connected yet — use the chips in the top bar to connect one.';
+        sub.textContent = 'No mailboxes connected yet — add credentials under Integrations.';
         wrap.innerHTML = '';
         return;
       }
@@ -653,45 +668,122 @@
         const res = await fetch('/api/inbox/reply', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ account: row.dataset.account, messageId: row.dataset.id, comment }),
+          body: JSON.stringify({
+            account: row.dataset.account,
+            to: row.dataset.from,
+            subject: row.dataset.subject,
+            messageId: row.dataset.messageid,
+            comment,
+          }),
         });
-        if (!res.ok) throw new Error('failed');
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'failed');
+        }
         status.textContent = 'Sent.';
         setTimeout(() => box.remove(), 1200);
       } catch (err) {
-        status.textContent = 'Failed to send — try again.';
+        status.textContent = err.message || 'Failed to send — try again.';
       }
     });
   });
 
+  let mailDefaults = {};
+
   async function loadIntegrations(){
-    const wrap = document.getElementById('intOutlookMail');
+    const wrap = document.getElementById('intMailAccounts');
     try {
       const res = await fetch('/api/mailboxes');
-      const boxes = await res.json();
-      wrap.innerHTML = boxes.length
-        ? boxes.map(b => `
-            <div class="int-row">
+      const data = await res.json();
+      mailDefaults = data.defaults || {};
+      wrap.innerHTML = data.mailboxes.length
+        ? data.mailboxes.map(b => `
+            <div class="int-row" data-email="${escapeHtml(b.email)}">
               <span>${escapeHtml(b.email)}</span>
-              <button type="button" class="int-btn ${b.connected ? 'connected' : 'disconnected'}" data-email="${escapeHtml(b.email)}" data-connected="${b.connected}">${b.connected ? 'Connected' : 'Connect'}</button>
+              <button type="button" class="int-btn ${b.connected ? 'connected' : 'disconnected'}" data-connected="${b.connected}">${b.connected ? 'Connected' : 'Connect'}</button>
             </div>`).join('')
-        : '<div class="int-row"><span class="msg-snippet">No mailboxes configured (set MS_MAILBOXES in Railway).</span></div>';
+        : '<div class="int-row"><span class="msg-snippet">No mailboxes configured (set MAILBOXES in Railway).</span></div>';
     } catch (err) {
       wrap.innerHTML = '<div class="int-row"><span class="msg-snippet">Mailbox status unavailable.</span></div>';
     }
   }
 
-  document.getElementById('intOutlookMail').addEventListener('click', async (e) => {
+  function openConnectForm(row, email){
+    if (row.parentElement.querySelector('.connect-form')) return;
+    const form = document.createElement('div');
+    form.className = 'connect-form';
+    form.innerHTML = `
+      <label>Password for ${escapeHtml(email)}</label>
+      <input type="password" class="cf-password" autocomplete="new-password" placeholder="Mailbox password">
+      <label>Username <span class="msg-snippet">(usually the full address)</span></label>
+      <input type="text" class="cf-username" value="${escapeHtml(email)}">
+      <div class="cf-advanced">
+        <label>IMAP host / port</label>
+        <div class="row">
+          <input type="text" class="cf-imap-host" value="${escapeHtml(mailDefaults.imapHost || '')}">
+          <input type="text" class="cf-imap-port" style="max-width:80px;" value="${escapeHtml(String(mailDefaults.imapPort || ''))}">
+        </div>
+        <label>SMTP host / port</label>
+        <div class="row">
+          <input type="text" class="cf-smtp-host" value="${escapeHtml(mailDefaults.smtpHost || '')}">
+          <input type="text" class="cf-smtp-port" style="max-width:80px;" value="${escapeHtml(String(mailDefaults.smtpPort || ''))}">
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button type="button" class="btn cf-save">Connect</button>
+        <button type="button" class="btn ghost cf-cancel">Cancel</button>
+        <span class="reply-status cf-status"></span>
+      </div>`;
+    row.insertAdjacentElement('afterend', form);
+    form.querySelector('.cf-password').focus();
+
+    form.querySelector('.cf-cancel').addEventListener('click', () => form.remove());
+    form.querySelector('.cf-save').addEventListener('click', async () => {
+      const status = form.querySelector('.cf-status');
+      const password = form.querySelector('.cf-password').value;
+      if (!password) { status.textContent = 'Enter the password.'; return; }
+      status.textContent = 'Checking credentials…';
+      try {
+        const res = await fetch('/api/mailboxes/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            password,
+            username: form.querySelector('.cf-username').value,
+            imapHost: form.querySelector('.cf-imap-host').value,
+            imapPort: form.querySelector('.cf-imap-port').value,
+            smtpHost: form.querySelector('.cf-smtp-host').value,
+            smtpPort: form.querySelector('.cf-smtp-port').value,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Could not connect.');
+        }
+        form.remove();
+        showBanner(`Connected ${email}.`, 'ok');
+        loadIntegrations();
+        loadMailboxes();
+        loadInbox();
+      } catch (err) {
+        status.textContent = err.message;
+      }
+    });
+  }
+
+  document.getElementById('intMailAccounts').addEventListener('click', async (e) => {
     const btn = e.target.closest('.int-btn');
     if (!btn) return;
-    const email = btn.dataset.email;
+    const row = btn.closest('.int-row');
+    const email = row.dataset.email;
 
     if (btn.dataset.connected !== 'true') {
-      location.href = `/auth/microsoft/start?account=${encodeURIComponent(email)}`;
+      openConnectForm(row, email);
       return;
     }
 
-    if (!confirm(`Disconnect ${email}? You'll need to reconnect it to read or reply to this mailbox again.`)) return;
+    if (!confirm(`Disconnect ${email}? Its stored password will be deleted.`)) return;
     btn.disabled = true;
     btn.textContent = 'Disconnecting…';
     try {
@@ -712,18 +804,6 @@
   });
 
   (function initMail(){
-    const params = new URLSearchParams(location.search);
-    if (params.get('connected')) showBanner(`Connected ${params.get('connected')}.`, 'ok');
-    const mailError = params.get('mailError');
-    if (mailError && mailError.startsWith('wrong_account:')) {
-      const signedInAs = mailError.slice('wrong_account:'.length);
-      showBanner(`You signed in as ${signedInAs}, which isn't the mailbox you clicked Connect on. Nothing was saved — sign out of Microsoft (or use a private window) and try again with the right account.`, 'error');
-    } else if (mailError) {
-      showBanner(`Couldn't connect that mailbox (${mailError}).`, 'error');
-    }
-    if (params.get('connected') || params.get('mailError')) {
-      history.replaceState({}, '', location.pathname);
-    }
     loadMailboxes();
     loadInbox();
     loadIntegrations();

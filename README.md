@@ -38,32 +38,39 @@ whatever you set `AUTH_USER` / `AUTH_PASS` to.
 Railway gives you HTTPS and network isolation on that domain by default.
 Everything below is still on you.
 
-## Outlook mail
+## Mail
 
-Reads and replies to whatever mailboxes you connect, via Microsoft Graph
-(delegated permissions: `Mail.Read`, `Mail.Send`, `offline_access`).
+Reads the inbox over IMAP and sends replies over SMTP.
+
+**Why not Microsoft Graph?** The original plan was Outlook via Graph, but
+this domain's mail is hosted at Hostinger, not Microsoft 365 — its MX
+records point to `mx*.hostinger.com`, and Microsoft's directory lookup
+returns `NameSpaceType: Unknown` for these addresses. Graph can only
+reach Exchange Online mailboxes, so it can't work here regardless of how
+the app registration is configured. IMAP/SMTP is the right protocol for
+mail hosted anywhere outside Microsoft. (The same constraint rules out
+Outlook Calendar; that section is marked unavailable in the UI.)
 
 Setup:
 
-1. Register an app in Microsoft Entra (portal.azure.com → Entra ID → App
-   registrations), single tenant. Redirect URI (Web):
-   `https://<your-domain>/auth/microsoft/callback`.
-2. Add delegated Graph permissions `Mail.Read`, `Mail.Send`,
-   `offline_access`, grant admin consent.
-3. Create a client secret.
-4. Set `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_TENANT_ID`, and
-   `MS_MAILBOXES` (comma-separated list of the mailbox addresses you want
-   connectable — anything not in this list is rejected) in Railway
-   Variables.
-5. In the app's top bar, click "Connect" next to each configured
-   mailbox and sign in. Tokens are encrypted (`lib/crypto.js`) and stored
-   in `oauth_tokens`, refreshed automatically via the stored refresh
-   token — no need to reconnect unless a mailbox goes unused for ~90
-   days (Microsoft expires unused refresh tokens).
+1. Set `MAILBOXES` in Railway Variables — a comma-separated allowlist of
+   the addresses you want connectable. Anything not in the list is
+   rejected by the connect endpoint.
+2. Optionally override `IMAP_HOST` / `IMAP_PORT` / `SMTP_HOST` /
+   `SMTP_PORT`; they default to Hostinger's and just pre-fill the form.
+3. In the app: **Integrations** → **Connect** next to a mailbox → enter
+   its password. The credentials are tested against the IMAP server
+   before anything is saved, so a wrong password fails immediately
+   instead of producing a silently empty inbox.
 
-`/auth/microsoft/start` only accepts an `account` value present in
-`MS_MAILBOXES`, so the connect flow can't be pointed at an arbitrary
-mailbox even by someone poking at the URL directly.
+Passwords are encrypted with AES-256-GCM (`lib/crypto.js`) before being
+written to `mail_accounts`, and are never returned to the browser — the
+API only ever reports connected/not-connected. Disconnecting deletes the
+stored credential outright.
+
+Note that an IMAP password grants full mailbox access and can't be
+scoped the way an OAuth token can. Use a dedicated app password if your
+provider supports one.
 
 ## Security — done so far, and what's still on you
 
@@ -77,9 +84,9 @@ this repo now has:
   keyed off Railway's `X-Real-IP` header (see the comment in `server.js`
   for why — their proxy chain doesn't suit Express's default
   `trust proxy` hop-counting).
-- **Encrypted token storage.** The `oauth_tokens` table (`lib/migrate.js`)
-  and AES-256-GCM helpers (`lib/crypto.js`) hold Outlook mail tokens now;
-  ready for Calendar and Wave when those land too.
+- **Encrypted credential storage.** Mailbox passwords live in
+  `mail_accounts`, encrypted with AES-256-GCM (`lib/crypto.js`). The
+  `oauth_tokens` table is still there for Wave's OAuth when that lands.
 
 Still to do before connecting real accounts:
 
@@ -87,9 +94,7 @@ Still to do before connecting real accounts:
   right now it's a single shared username/password in Railway Variables,
   fine for one user, not for a team.
 - **Scope OAuth permissions for you.** When registering the app in
-  Microsoft Entra (for Outlook/Calendar) and in Wave's developer portal,
-  request only the specific mail/calendar/accounting scopes you need —
-  not full directory or admin access.
+  Wave's developer portal, request only the accounting scopes you need.
 - **Store secrets for you.** Put client IDs, client secrets, and any
   encryption key in Railway's **Variables** tab, never in the repo.
   Copy `.env.example` to `.env` for local dev and keep `.env` out of git
@@ -107,9 +112,9 @@ public/index.html   the app (dashboard, CRM, tickets, projects, finance, spec)
 views/login.html     login form (served outside the auth gate)
 server.js             Express server: session auth, rate limiting, static serving, mail routes
 lib/db.js             Postgres connection pool
-lib/migrate.js         creates the oauth_tokens table on startup
-lib/crypto.js           AES-256-GCM helpers for encrypting tokens at rest
-lib/msgraph.js          Microsoft Graph OAuth + mail API calls
+lib/migrate.js         creates the mail_accounts / oauth_tokens tables on startup
+lib/crypto.js           AES-256-GCM helpers for encrypting credentials at rest
+lib/mail.js             IMAP reading + SMTP sending
 package.json
 .env.example          placeholders for the secrets you'll need
 ```

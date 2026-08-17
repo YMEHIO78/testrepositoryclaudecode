@@ -10,7 +10,7 @@ const pgSession = require('connect-pg-simple')(session);
 const rateLimit = require('express-rate-limit');
 const { pool } = require('./lib/db');
 const { migrate } = require('./lib/migrate');
-const msgraph = require('./lib/msgraph');
+const mail = require('./lib/mail');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -103,87 +103,52 @@ app.use((req, res, next) => {
   res.redirect('/login');
 });
 
-// --- Outlook mail (Microsoft Graph) ---
-// MS_MAILBOXES is a comma-separated allowlist of the mailboxes this app
-// is permitted to connect — /auth/microsoft/start only accepts an
-// `account` value that appears in it, so the OAuth flow can't be aimed
-// at an arbitrary mailbox.
+// --- Mail (IMAP read / SMTP send) ---
+// MAILBOXES is a comma-separated allowlist of addresses this app may
+// connect. Credentials are entered per mailbox and stored encrypted.
 function configuredMailboxes() {
-  return (process.env.MS_MAILBOXES || '')
+  return (process.env.MAILBOXES || '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
 }
 
-function redirectUriFor(req) {
-  return `${req.protocol}://${req.get('host')}/auth/microsoft/callback`;
-}
-
-app.get('/auth/microsoft/start', (req, res) => {
-  const account = req.query.account;
-  if (!configuredMailboxes().includes(account)) {
-    return res.status(400).send('Unknown mailbox.');
-  }
-  const state = crypto.randomBytes(16).toString('hex');
-  req.session.msOAuthState = { value: state, account };
-  const url = msgraph.buildAuthorizeUrl({ redirectUri: redirectUriFor(req), state });
-  res.redirect(url);
-});
-
-app.get('/auth/microsoft/callback', async (req, res) => {
-  const pending = req.session.msOAuthState;
-  delete req.session.msOAuthState;
-
-  if (req.query.error) {
-    return res.redirect(`/?mailError=${encodeURIComponent(req.query.error)}`);
-  }
-  if (!pending || !req.query.state || req.query.state !== pending.value) {
-    return res.redirect('/?mailError=invalid_state');
-  }
-
-  try {
-    const tokens = await msgraph.exchangeCodeForToken({
-      code: req.query.code,
-      redirectUri: redirectUriFor(req),
-    });
-
-    // Graph reads mail via /me — whichever account actually signed in.
-    // Without this check, signing in as a different account than the one
-    // clicked would silently store that account's token under the wrong
-    // label, and the inbox would show the wrong mailbox's mail.
-    const me = await msgraph.getSignedInUser(tokens.access_token);
-    const signedInAs = (me.mail || me.userPrincipalName || '').toLowerCase();
-    if (signedInAs !== pending.account.toLowerCase()) {
-      console.warn(`OAuth account mismatch: clicked ${pending.account}, signed in as ${signedInAs || 'unknown'}`);
-      return res.redirect(`/?mailError=${encodeURIComponent(`wrong_account:${signedInAs || 'unknown'}`)}`);
-    }
-
-    await msgraph.saveTokens(pending.account, tokens);
-    res.redirect(`/?connected=${encodeURIComponent(pending.account)}`);
-  } catch (err) {
-    console.error('Microsoft OAuth callback failed:', err);
-    res.redirect('/?mailError=token_exchange_failed');
-  }
-});
-
 app.get('/api/mailboxes', async (req, res) => {
-  const connected = new Set(await msgraph.listConnectedAccounts());
-  res.json(configuredMailboxes().map((email) => ({ email, connected: connected.has(email) })));
+  const connected = new Set(await mail.listAccounts());
+  res.json({
+    defaults: mail.defaults(),
+    mailboxes: configuredMailboxes().map((email) => ({ email, connected: connected.has(email) })),
+  });
 });
 
-// Diagnostic: what's actually in each stored token (claims only, never
-// the token itself). Behind the auth gate like everything else.
-app.get('/api/mailboxes/diagnose', async (req, res) => {
-  const accounts = await msgraph.listConnectedAccounts();
-  const report = await Promise.all(accounts.map(async (account) => {
-    try {
-      const accessToken = await msgraph.getValidAccessToken(account);
-      return { account, token: msgraph.describeToken(accessToken) };
-    } catch (err) {
-      return { account, error: err.message };
-    }
-  }));
-  res.json(report);
+app.post('/api/mailboxes/connect', express.json(), async (req, res) => {
+  const { email, username, password, imapHost, imapPort, smtpHost, smtpPort } = req.body || {};
+  if (!configuredMailboxes().includes(email)) {
+    return res.status(400).json({ error: 'Unknown mailbox.' });
+  }
+  if (!password) {
+    return res.status(400).json({ error: 'A password is required.' });
+  }
+
+  const candidate = {
+    email,
+    username: username || email,
+    password,
+    imapHost: imapHost || mail.defaults().imapHost,
+    imapPort: Number(imapPort) || mail.defaults().imapPort,
+    smtpHost: smtpHost || mail.defaults().smtpHost,
+    smtpPort: Number(smtpPort) || mail.defaults().smtpPort,
+  };
+
+  // Validate before storing, so a bad password fails here rather than
+  // silently producing an empty inbox later.
+  const check = await mail.verifyCredentials(candidate);
+  if (!check.ok) {
+    return res.status(400).json({ error: `Could not sign in to that mailbox: ${check.message}` });
+  }
+
+  await mail.saveAccount(email, candidate);
+  res.status(204).end();
 });
 
 app.post('/api/mailboxes/disconnect', express.json(), async (req, res) => {
@@ -191,33 +156,21 @@ app.post('/api/mailboxes/disconnect', express.json(), async (req, res) => {
   if (!configuredMailboxes().includes(email)) {
     return res.status(400).json({ error: 'Unknown mailbox.' });
   }
-  await msgraph.disconnectAccount(email);
+  await mail.deleteAccount(email);
   res.status(204).end();
 });
 
 app.get('/api/inbox', async (req, res) => {
   try {
-    const accounts = (await msgraph.listConnectedAccounts())
+    const accounts = (await mail.listAccounts())
       .filter((a) => configuredMailboxes().includes(a));
 
-    // Per-account isolation: one mailbox failing (expired grant, revoked
-    // consent) shouldn't blank out the others.
+    // Per-account isolation: one mailbox failing (wrong password, server
+    // down) shouldn't blank out the others.
     const errors = [];
     const perAccount = await Promise.all(accounts.map(async (account) => {
       try {
-        const accessToken = await msgraph.getValidAccessToken(account);
-        if (!accessToken) return [];
-        const messages = await msgraph.listMessages(accessToken, { top: 25 });
-        return messages.map((m) => ({
-          id: m.id,
-          account,
-          subject: m.subject,
-          from: m.from?.emailAddress?.name || m.from?.emailAddress?.address || 'Unknown sender',
-          receivedDateTime: m.receivedDateTime,
-          preview: m.bodyPreview,
-          isRead: m.isRead,
-          webLink: m.webLink,
-        }));
+        return await mail.fetchMessages(account, { limit: 25 });
       } catch (err) {
         console.error(`Failed to load mail for ${account}:`, err);
         errors.push({ account, message: err.message });
@@ -226,27 +179,25 @@ app.get('/api/inbox', async (req, res) => {
     }));
 
     const messages = perAccount.flat().sort((a, b) =>
-      new Date(b.receivedDateTime) - new Date(a.receivedDateTime));
+      new Date(b.receivedDateTime || 0) - new Date(a.receivedDateTime || 0));
     res.json({ accounts, messages, errors });
   } catch (err) {
     console.error('Failed to load inbox:', err);
-    res.status(502).json({ error: 'Failed to load mail from Microsoft Graph.' });
+    res.status(502).json({ error: 'Failed to load mail.' });
   }
 });
 
 app.post('/api/inbox/reply', express.json(), async (req, res) => {
-  const { account, messageId, comment } = req.body || {};
-  if (!configuredMailboxes().includes(account) || !messageId || !comment) {
-    return res.status(400).json({ error: 'account, messageId, and comment are required.' });
+  const { account, to, subject, messageId, comment } = req.body || {};
+  if (!configuredMailboxes().includes(account) || !to || !comment) {
+    return res.status(400).json({ error: 'account, to, and comment are required.' });
   }
   try {
-    const accessToken = await msgraph.getValidAccessToken(account);
-    if (!accessToken) return res.status(409).json({ error: 'That mailbox is not connected.' });
-    await msgraph.sendReply(accessToken, messageId, comment);
+    await mail.sendReply(account, { to, subject, body: comment, inReplyTo: messageId });
     res.status(204).end();
   } catch (err) {
     console.error('Failed to send reply:', err);
-    res.status(502).json({ error: 'Failed to send reply via Microsoft Graph.' });
+    res.status(502).json({ error: `Failed to send reply: ${err.message}` });
   }
 });
 
