@@ -15,24 +15,24 @@
     /* Palette, type and spacing taken from the reference design:
        cool greys, a teal accent with magenta as the second accent,
        serif throughout, and near-sharp corners. */
-    --color-bg:#f3f2f2;
-    --color-surface:#eae9e9;
+    --color-bg:#faf7f0;
+    --color-surface:#fffdf8;
     --color-text:#201e1d;
-    --color-accent:#0088b0;
-    --color-accent-100:#e9f8ff;
-    --color-accent-700:#006786;
-    --color-accent-2:#d6006c;
-    --color-accent-2-100:#fff1f4;
-    --color-accent-2-700:#aa0b56;
+    --color-accent:#1800ad;
+    --color-accent-100:#e6e0f7;
+    --color-accent-700:#12007d;
+    --color-accent-2:#a90b56;
+    --color-accent-2-100:#fdeaf1;
+    --color-accent-2-700:#a90b56;
     --color-process-yellow:#edbb00;
-    --color-neutral-100:#f8f4f4;
-    --color-neutral-200:#eae7e7;
-    --color-neutral-300:#d7d3d3;
-    --color-neutral-400:#bab6b6;
-    --color-neutral-500:#9b9797;
+    --color-neutral-100:#fffdf8;
+    --color-neutral-200:#f4f0e6;
+    --color-neutral-300:#f0ebe0;
+    --color-neutral-400:#9b9797;
+    --color-neutral-500:#8a8683;
     --color-neutral-600:#7d7979;
     --color-neutral-900:#2d2b2b;
-    --color-divider:color-mix(in srgb, #201e1d 16%, transparent);
+    --color-divider:rgba(32, 30, 29, 0.14);
 
     --radius-sm:1px;
     --radius-md:2px;
@@ -76,19 +76,19 @@
   button{font-family:inherit;cursor:pointer;}
 
   /* Shell */
-  .shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh;}
-  .rail{background:var(--color-neutral-900);color:var(--color-neutral-200);padding:var(--space-4) var(--space-3);display:flex;flex-direction:column;gap:var(--space-3);}
-  .brand{font-family:var(--font-heading);font-weight:var(--font-heading-weight);letter-spacing:.02em;font-size:18px;line-height:1.25;padding:0 6px;color:#fff;}
-  .brand small{display:block;color:var(--color-neutral-400);font-weight:400;letter-spacing:2px;font-size:10px;margin-top:2px;}
-  .nav-group{display:flex;flex-direction:column;gap:2px;}
-  .nav-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--color-neutral-500);padding:10px 10px 4px;}
-  .nav-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;background:none;border:none;color:var(--color-neutral-300);text-align:left;padding:7px 10px;border-radius:var(--radius-md);font-size:14px;font-family:inherit;}
-  .nav-btn:hover{background:rgba(255,255,255,.08);}
-  .nav-btn.active{background:var(--color-accent);color:#fff;font-weight:600;}
-  .nav-badge{font-family:var(--font-mono);font-size:10px;background:rgba(255,255,255,.16);padding:1px 6px;border-radius:var(--radius-lg);}
-  .nav-btn.active .nav-badge{background:var(--brand-soft);color:var(--brand);}
-  .rail-foot{margin-top:auto;font-size:11px;color:var(--color-neutral-400);padding:0 10px;}
-  .logout-btn{background:none;border:none;color:var(--color-neutral-400);text-decoration:underline;cursor:pointer;font-size:11px;padding:0;margin-top:6px;font-family:inherit;}
+  .shell{display:flex;align-items:stretch;min-height:100vh;}
+  .rail{width:264px;flex:none;background:var(--color-neutral-300);border-right:1px solid var(--color-divider);height:100vh;position:sticky;top:0;overflow-y:auto;display:flex;flex-direction:column;padding:22px 0 14px;gap:0;}
+  .brand{font-size:21px;font-weight:700;letter-spacing:.16em;color:var(--color-accent);line-height:1;padding:0 20px;}
+  .brand small{display:block;font-size:10px;letter-spacing:.34em;color:var(--color-neutral-500);font-weight:600;margin-top:3px;}
+  .nav-group{display:flex;flex-direction:column;gap:1px;padding:0 10px;}
+  .nav-label{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--color-neutral-400);font-weight:600;padding:18px 10px 6px;}
+  .nav-btn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;font-family:inherit;font-size:15px;color:var(--color-text);padding:7px 10px;border:0;border-radius:var(--radius-md);cursor:pointer;background:none;}
+  .nav-btn:hover{background:var(--color-accent-100);}
+  .nav-btn.active{background:var(--color-accent-100);color:var(--color-accent);font-weight:600;}
+  .nav-badge{font-size:12px;color:var(--color-neutral-600);font-family:inherit;background:none;padding:0;}
+  .nav-btn.active .nav-badge{color:var(--color-accent);}
+  .rail-foot{margin-top:auto;font-size:12px;color:var(--color-neutral-600);padding:22px 20px 0;border-top:1px solid var(--color-divider);}
+  .logout-btn{background:none;border:none;color:var(--color-accent);text-decoration:underline;cursor:pointer;font-size:12px;padding:0;margin-top:6px;font-family:inherit;}
   .logout-btn:hover{color:#fff;}
 
   .main{display:flex;flex-direction:column;min-height:100vh;}
@@ -100,7 +100,7 @@
   .chip{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-md);padding:3px 10px;font-family:var(--font-mono);font-size:10.5px;}
 
   .view{padding:24px 28px 60px;max-width:1180px;}
-  .view h1{font-size:34px;margin:0 0 6px;letter-spacing:-.01em;}
+  .view h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em;}
   .view .sub{color:var(--muted);font-size:13px;margin:0 0 22px;}
 
   .grid{display:grid;gap:14px;}
@@ -149,6 +149,49 @@
   .reply-box textarea{width:100%;min-height:70px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-lg);font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);resize:vertical;}
   .reply-box .row{display:flex;gap:8px;align-items:center;}
   .reply-status{font-size:11.5px;color:var(--muted);}
+  /* Inbox master-detail, per the reference layout */
+  .inbox-view{display:flex;align-items:stretch;min-height:0;flex:1;padding:0;max-width:none;}
+  .inbox-list{width:380px;flex:none;border-right:1px solid var(--color-divider);display:flex;flex-direction:column;min-height:0;}
+  .inbox-list-head{padding:22px 22px 0;display:flex;flex-direction:column;gap:8px;}
+  .inbox-tabs{display:flex;flex-direction:column;gap:1px;padding-bottom:10px;}
+  .inbox-tab{display:flex;align-items:baseline;justify-content:space-between;gap:10px;width:100%;
+    text-align:left;font-family:inherit;font-size:14px;color:var(--color-text);background:none;border:0;
+    padding:5px 8px;border-radius:var(--radius-md);cursor:pointer;}
+  .inbox-tab:hover{background:var(--color-neutral-200);}
+  .inbox-tab.active{background:var(--color-accent-100);color:var(--color-accent);font-weight:600;}
+  .inbox-tab .count{font-size:12px;color:var(--color-neutral-500);flex:none;}
+  .inbox-tab.active .count{color:var(--color-accent);}
+  .inbox-scroll{flex:1;overflow-y:auto;padding:0 22px 22px;}
+  .mail-item{display:flex;flex-direction:column;gap:4px;text-align:left;font-family:inherit;width:100%;
+    cursor:pointer;border:0;border-bottom:1px solid rgba(32,30,29,.08);padding:9px 4px 11px 0;background:none;}
+  .mail-item:hover{background:var(--color-neutral-200);}
+  .mail-item.selected{background:var(--color-accent-100);}
+  .mail-item-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;width:100%;}
+  .mail-from{font-size:14px;font-weight:600;color:var(--color-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .mail-from.unread::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;
+    background:var(--color-accent);margin-right:6px;vertical-align:middle;}
+  .mail-time{font-size:12px;color:var(--color-neutral-400);flex:none;}
+  .mail-subj{font-size:14px;color:var(--color-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .mail-sub2{font-size:12px;color:var(--color-neutral-600);display:flex;gap:8px;align-items:center;padding-top:3px;}
+
+  .inbox-detail{flex:1;min-width:0;padding:30px 44px 60px;max-width:900px;overflow-y:auto;}
+  .mail-head{display:flex;flex-direction:column;gap:6px;border-bottom:1px solid rgba(32,30,29,.16);
+    padding-bottom:18px;margin-bottom:20px;}
+  .mail-head h2{font-size:30px;font-weight:600;margin:0;letter-spacing:-.015em;line-height:1.15;}
+  .mail-head .meta{font-size:14px;color:#605d5d;}
+  .mail-head .meta2{font-size:14px;color:var(--color-neutral-600);}
+  .mail-read{display:flex;flex-direction:column;gap:15px;max-width:66ch;margin-bottom:30px;font-size:15px;line-height:1.6;}
+  .mail-read pre{white-space:pre-wrap;word-wrap:break-word;font-family:inherit;font-size:15px;line-height:1.6;margin:0;}
+  .mail-read iframe{width:100%;height:520px;border:1px solid var(--line);border-radius:var(--radius-md);background:#fff;}
+  .mail-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;
+    border-top:1px solid rgba(32,30,29,.12);padding-top:20px;}
+  .mail-actions button{font-family:inherit;font-size:14px;color:var(--color-text);background:none;
+    border:1px solid rgba(32,30,29,.28);border-radius:var(--radius-md);padding:9px 15px;cursor:pointer;}
+  .mail-actions button:hover{border-color:var(--color-accent);color:var(--color-accent);}
+  .mail-actions button.primary{color:#fff;background:var(--color-accent);border-color:var(--color-accent);font-weight:600;}
+  .mail-actions button.primary:hover{background:var(--color-accent-700);color:#fff;}
+  .mail-actions button.danger:hover{border-color:var(--color-accent-2);color:var(--color-accent-2);}
+
   .msg-row.open{background:#fbfaf7;}
   .msg-body{margin:10px 0 0 40px;padding:12px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-lg);}
   .msg-body pre{white-space:pre-wrap;word-wrap:break-word;font-family:inherit;font-size:13px;margin:0;max-height:420px;overflow-y:auto;}
@@ -249,7 +292,6 @@
   .integ-name{font-weight:600;font-size:13px;}
   .integ-desc{font-size:12px;color:var(--muted);}
 
-  .hidden{display:none;}
 </style>
 </head>
 <body>
@@ -355,11 +397,19 @@
     </div>
 
     <!-- ================= INBOX ================= -->
-    <div class="view hidden" id="view-inbox">
-      <h1>Inbox</h1>
-      <p class="sub" id="inboxSub">Loading messages…</p>
-      <div class="card" id="inboxMessages"></div>
-      <div class="note"><b>How this works.</b> Connected mailboxes are read over IMAP and replies go out over SMTP, straight from this app. Click a message to open it. Manage credentials under <a href="#" data-goto="integrations">Integrations</a>.</div>
+    <!-- Master-detail, matching the reference: a fixed list column on the
+         left, the selected message filling the pane on the right. -->
+    <div class="view inbox-view hidden" id="view-inbox">
+      <div class="inbox-list">
+        <div class="inbox-list-head">
+          <h1>Inbox</h1>
+          <div id="inboxTabs" class="inbox-tabs"></div>
+        </div>
+        <div class="inbox-scroll" id="inboxMessages"></div>
+      </div>
+      <div class="inbox-detail" id="inboxDetail">
+        <p class="msg-snippet">Select a message to read it.</p>
+      </div>
     </div>
 
     <!-- ================= CALENDAR ================= -->
@@ -782,173 +832,159 @@
     }
   }
 
-  function renderMessage(m){
-    const initials = (m.from || '?').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
-    const pill = m.isRead ? '<span class="pill grey">read</span>' : '<span class="pill red">unread</span>';
-    return `
-      <div class="msg-row"
-           data-id="${escapeHtml(m.id)}"
-           data-account="${escapeHtml(m.account)}"
-           data-from="${escapeHtml(m.fromAddress)}"
-           data-subject="${escapeHtml(m.subject || '')}"
-           data-messageid="${escapeHtml(m.messageId || '')}">
-        <div class="msg-row-top">
-          <div class="avatar">${escapeHtml(initials)}</div>
-          <div style="flex:1;">
-            <div class="msg-meta">${escapeHtml(m.from)} · ${timeAgo(m.receivedDateTime)} · to ${escapeHtml(m.account)}</div>
-            <div class="msg-subject">${escapeHtml(m.subject || '(no subject)')}</div>
-            <div class="msg-snippet">
-              ${escapeHtml(m.fromAddress)}
-              ${m.client ? ` · <span class="pill brand">${escapeHtml(m.client.name)}</span>` : ''}
-            </div>
-          </div>
-          <div class="msg-actions">
-            ${pill}
-            <button type="button" class="reply-toggle">Reply</button>
-          </div>
+  // --- Inbox: master-detail ---
+  // The list stays put on the left and the selected message fills the
+  // pane on the right, matching the reference. Bodies are fetched on
+  // selection, so the list itself stays fast.
+  let inboxData = { accounts: [], messages: [], errors: [] };
+  let inboxFilter = '';        // '' = all mailboxes
+  let selectedMailId = null;   // `${account}:${uid}`
+
+  function mailKey(m){ return `${m.account}:${m.id}`; }
+
+  function renderInboxTabs(){
+    const wrap = document.getElementById('inboxTabs');
+    const unreadFor = (acct) => inboxData.messages
+      .filter(m => (!acct || m.account === acct) && !m.isRead).length;
+
+    const tabs = [{ key: '', label: 'All mail' }]
+      .concat(inboxData.accounts.map(a => ({ key: a, label: a })));
+
+    wrap.innerHTML = tabs.map(t => `
+      <button type="button" class="inbox-tab ${t.key === inboxFilter ? 'active' : ''}" data-tab="${escapeHtml(t.key)}">
+        <span>${escapeHtml(t.label)}</span>
+        <span class="count">${unreadFor(t.key) || ''}</span>
+      </button>`).join('');
+  }
+
+  function renderInboxList(){
+    const wrap = document.getElementById('inboxMessages');
+    const list = inboxFilter
+      ? inboxData.messages.filter(m => m.account === inboxFilter)
+      : inboxData.messages;
+
+    const errors = (inboxData.errors || []).map(e =>
+      `<p class="msg-snippet" style="color:var(--red);padding:8px 0;">${escapeHtml(e.account)}: ${escapeHtml(e.message)}</p>`).join('');
+
+    if (!inboxData.accounts.length) {
+      wrap.innerHTML = '<p class="msg-snippet" style="padding-top:12px;">No mailboxes connected yet — add credentials under Integrations.</p>';
+      return;
+    }
+
+    wrap.innerHTML = errors + (list.length ? list.map(m => `
+      <button type="button" class="mail-item ${mailKey(m) === selectedMailId ? 'selected' : ''}"
+              data-id="${escapeHtml(m.id)}" data-account="${escapeHtml(m.account)}">
+        <div class="mail-item-top">
+          <span class="mail-from ${m.isRead ? '' : 'unread'}">${escapeHtml(m.from)}</span>
+          <span class="mail-time">${escapeHtml(timeAgo(m.receivedDateTime))}</span>
         </div>
-      </div>`;
+        <div class="mail-subj">${escapeHtml(m.subject || '(no subject)')}</div>
+        <div class="mail-sub2">
+          <span>to ${escapeHtml(m.account.split('@')[0])}@</span>
+          ${m.client ? `<span style="color:var(--color-accent);">${escapeHtml(m.client.name)}</span>` : ''}
+        </div>
+      </button>`).join('')
+      : (errors ? '' : '<p class="msg-snippet" style="padding-top:12px;">No messages.</p>'));
   }
 
   async function loadInbox(){
-    const sub = document.getElementById('inboxSub');
-    const wrap = document.getElementById('inboxMessages');
     try {
       const res = await fetch('/api/inbox');
       if (!res.ok) throw new Error('request failed');
-      const data = await res.json();
-      if (!data.accounts.length) {
-        sub.textContent = 'No mailboxes connected yet — add credentials under Integrations.';
-        wrap.innerHTML = '';
-        return;
-      }
-      sub.textContent = `${data.messages.length} messages across ${data.accounts.length} connected inbox${data.accounts.length === 1 ? '' : 'es'}`;
-      const errorHtml = (data.errors || []).map(e =>
-        `<div class="msg-row"><span class="msg-snippet" style="color:var(--red);">${escapeHtml(e.account)}: ${escapeHtml(e.message)}</span></div>`).join('');
-      wrap.innerHTML = errorHtml + (data.messages.length
-        ? data.messages.map(renderMessage).join('')
-        : (errorHtml ? '' : '<div class="msg-row"><span class="msg-snippet">No messages found.</span></div>'));
+      inboxData = await res.json();
     } catch (err) {
-      sub.textContent = 'Could not load mail right now.';
-      wrap.innerHTML = '';
+      document.getElementById('inboxMessages').innerHTML =
+        '<p class="msg-snippet" style="padding-top:12px;">Could not load mail right now.</p>';
+      return;
+    }
+    renderInboxTabs();
+    renderInboxList();
+  }
+
+  document.getElementById('inboxTabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('.inbox-tab');
+    if (!tab) return;
+    inboxFilter = tab.dataset.tab;
+    renderInboxTabs();
+    renderInboxList();
+  });
+
+  document.getElementById('inboxMessages').addEventListener('click', (e) => {
+    const item = e.target.closest('.mail-item');
+    if (!item) return;
+    selectedMailId = `${item.dataset.account}:${item.dataset.id}`;
+    renderInboxList();
+    openMessage(item.dataset.account, item.dataset.id);
+  });
+
+  function renderMailBody(msg, container, showHtml){
+    if (showHtml && msg.html) {
+      // Sandboxed: remote mail carries scripts and trackers, so it renders
+      // isolated with no script execution and no reach back into the app.
+      const frame = document.createElement('iframe');
+      frame.setAttribute('sandbox', '');
+      frame.srcdoc = msg.html;
+      container.innerHTML = '';
+      container.appendChild(frame);
+    } else {
+      container.innerHTML = `<pre>${escapeHtml(msg.text || '(no plain-text body)')}</pre>`;
     }
   }
 
-  function replyBox(row, prefill){
-    let box = row.querySelector('.reply-box');
-    if (box) { box.remove(); return; }
-    box = document.createElement('div');
-    box.className = 'reply-box';
-    box.innerHTML = `
-      <textarea placeholder="Write a reply…">${escapeHtml(prefill || '')}</textarea>
-      <div class="row">
-        <button type="button" class="btn send-reply">Send reply</button>
-        <span class="reply-status"></span>
-      </div>`;
-    row.appendChild(box);
-    const ta = box.querySelector('textarea');
-    ta.focus();
-    ta.setSelectionRange(0, 0);
-
-    box.querySelector('.send-reply').addEventListener('click', async () => {
-      const comment = ta.value.trim();
-      const status = box.querySelector('.reply-status');
-      if (!comment) { status.textContent = 'Write something first.'; return; }
-      status.textContent = 'Sending…';
-      try {
-        const res = await fetch('/api/inbox/reply', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            account: row.dataset.account,
-            to: row.dataset.from,
-            subject: row.dataset.subject,
-            messageId: row.dataset.messageid,
-            comment,
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || 'failed');
-        }
-        status.textContent = 'Sent.';
-        setTimeout(() => box.remove(), 1200);
-      } catch (err) {
-        status.textContent = err.message || 'Failed to send — try again.';
-      }
-    });
-  }
-
-  async function openMessage(row){
-    const existing = row.querySelector('.msg-body');
-    if (existing) { existing.remove(); row.classList.remove('open'); return; }
-
-    const panel = document.createElement('div');
-    panel.className = 'msg-body';
-    panel.innerHTML = '<span class="msg-snippet">Loading message…</span>';
-    row.appendChild(panel);
-    row.classList.add('open');
+  async function openMessage(account, uid){
+    const detail = document.getElementById('inboxDetail');
+    detail.innerHTML = '<p class="msg-snippet">Loading message…</p>';
 
     let msg;
     try {
-      const res = await fetch(`/api/inbox/message?account=${encodeURIComponent(row.dataset.account)}&uid=${encodeURIComponent(row.dataset.id)}`);
+      const res = await fetch(`/api/inbox/message?account=${encodeURIComponent(account)}&uid=${encodeURIComponent(uid)}`);
       msg = await res.json();
       if (!res.ok) throw new Error(msg.error || 'Could not open that message.');
     } catch (err) {
-      panel.innerHTML = `<span class="msg-snippet" style="color:var(--red);">${escapeHtml(err.message)}</span>`;
+      detail.innerHTML = `<p class="msg-snippet" style="color:var(--red);">${escapeHtml(err.message)}</p>`;
       return;
     }
 
     const hasHtml = !!msg.html;
-    panel.innerHTML = `
-      <div class="msg-toolbar">
-        <button type="button" data-act="reply">Reply</button>
+    detail.innerHTML = `
+      <div class="mail-head">
+        <h2>${escapeHtml(msg.subject)}</h2>
+        <div class="meta">${escapeHtml(msg.from)} &lt;${escapeHtml(msg.fromAddress)}&gt; · to ${escapeHtml(msg.account)}${msg.date ? ' · ' + escapeHtml(new Date(msg.date).toLocaleString()) : ''}</div>
+        <div class="meta2">
+          Linked client: ${msg.client
+            ? `<span style="color:var(--color-accent);">${escapeHtml(msg.client.name)}</span>`
+            : '<span>none</span>'}
+          · Attachments: ${msg.attachments.length ? escapeHtml(msg.attachments.map(a => a.filename).join(', ')) : 'none'}
+        </div>
+      </div>
+      <div class="mail-read" id="mailRead"></div>
+      <div class="mail-actions">
+        <button type="button" class="primary" data-act="reply">Reply</button>
         <button type="button" data-act="ticket">Create ticket</button>
         ${msg.client
-          ? `<button type="button" data-act="viewclient">Client: ${escapeHtml(msg.client.name)}</button>`
+          ? '<button type="button" data-act="viewclient">View client</button>'
           : '<button type="button" data-act="addclient">Add as client</button>'}
         <button type="button" data-act="unread">Mark unread</button>
-        <button type="button" data-act="delete" style="color:var(--red);">Delete</button>
-        ${hasHtml ? '<button type="button" class="body-toggle" data-act="toggle">View plain text</button>' : ''}
+        <button type="button" class="danger" data-act="delete">Delete</button>
+        ${hasHtml ? '<button type="button" data-act="toggle">View plain text</button>' : ''}
       </div>
-      <div class="msg-meta" style="margin-bottom:8px;">
-        From ${escapeHtml(msg.fromAddress)}${msg.to.length ? ' · to ' + escapeHtml(msg.to.join(', ')) : ''}
-        ${msg.date ? ' · ' + new Date(msg.date).toLocaleString() : ''}
-      </div>
-      <div class="msg-content"></div>
-      ${msg.attachments.length ? `<div class="msg-attach">${msg.attachments.length} attachment(s): ${msg.attachments.map(a => escapeHtml(a.filename)).join(', ')} — download isn't wired up yet.</div>` : ''}
-    `;
+      <div id="mailReply"></div>`;
 
-    const content = panel.querySelector('.msg-content');
     let showingHtml = hasHtml;
-    const renderBody = () => {
-      if (showingHtml) {
-        // Sandboxed: remote HTML mail can carry scripts and trackers, so
-        // it renders isolated with no script execution and no same-origin
-        // access back into the app.
-        const frame = document.createElement('iframe');
-        frame.setAttribute('sandbox', '');
-        frame.srcdoc = msg.html;
-        content.innerHTML = '';
-        content.appendChild(frame);
-      } else {
-        content.innerHTML = `<pre>${escapeHtml(msg.text || '(no plain-text body)')}</pre>`;
-      }
-    };
-    renderBody();
+    renderMailBody(msg, document.getElementById('mailRead'), showingHtml);
 
-    // Opening a message marks it read, matching every other mail client.
+    // Opening marks read, as any mail client does.
     if (!msg.isRead) {
       fetch('/api/inbox/read', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ account: msg.account, uid: msg.id, read: true }),
       }).then(() => {
-        const pill = row.querySelector('.pill');
-        if (pill) { pill.className = 'pill grey'; pill.textContent = 'read'; }
+        const local = inboxData.messages.find(m => mailKey(m) === `${msg.account}:${msg.id}`);
+        if (local) { local.isRead = true; renderInboxTabs(); renderInboxList(); }
       }).catch(() => {});
     }
 
-    panel.querySelector('.msg-toolbar').addEventListener('click', async (e) => {
+    detail.querySelector('.mail-actions').addEventListener('click', async (e) => {
       const btn = e.target.closest('button');
       if (!btn) return;
       const act = btn.dataset.act;
@@ -956,18 +992,16 @@
       if (act === 'toggle') {
         showingHtml = !showingHtml;
         btn.textContent = showingHtml ? 'View plain text' : 'View original HTML';
-        renderBody();
+        renderMailBody(msg, document.getElementById('mailRead'), showingHtml);
       } else if (act === 'reply') {
-        const quoted = `\n\n---\nOn ${msg.date ? new Date(msg.date).toLocaleString() : 'an earlier date'}, ${msg.from} wrote:\n`
-          + (msg.text || '').split('\n').slice(0, 20).map(l => `> ${l}`).join('\n');
-        replyBox(row, quoted);
+        openReply(msg);
       } else if (act === 'unread') {
         await fetch('/api/inbox/read', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ account: msg.account, uid: msg.id, read: false }),
         });
-        const pill = row.querySelector('.pill');
-        if (pill) { pill.className = 'pill red'; pill.textContent = 'unread'; }
+        const local = inboxData.messages.find(m => mailKey(m) === `${msg.account}:${msg.id}`);
+        if (local) { local.isRead = false; renderInboxTabs(); renderInboxList(); }
       } else if (act === 'delete') {
         if (!confirm('Delete this message? It moves to Trash on the mail server.')) return;
         btn.disabled = true;
@@ -977,22 +1011,81 @@
             body: JSON.stringify({ account: msg.account, uid: msg.id }),
           });
           if (!res.ok) throw new Error('failed');
-          row.remove();
+          inboxData.messages = inboxData.messages.filter(m => mailKey(m) !== `${msg.account}:${msg.id}`);
+          selectedMailId = null;
+          renderInboxTabs();
+          renderInboxList();
+          detail.innerHTML = '<p class="msg-snippet">Message deleted.</p>';
         } catch (err) {
           btn.disabled = false;
           alert('Could not delete that message.');
         }
       } else if (act === 'addclient') {
-        openAddClientFromEmail(panel, msg);
+        openAddClientFromEmail(msg);
       } else if (act === 'viewclient') {
         goto('crm');
       } else if (act === 'ticket') {
-        openTicketFromEmail(panel, msg);
+        openTicketFromEmail(msg);
       }
     });
   }
 
-  function openAddClientFromEmail(panel, msg){
+  function openReply(msg){
+    const wrap = document.getElementById('mailReply');
+    if (wrap.querySelector('textarea')) { wrap.innerHTML = ''; return; }
+
+    const quoted = `\n\n---\nOn ${msg.date ? new Date(msg.date).toLocaleString() : 'an earlier date'}, ${msg.from} wrote:\n`
+      + (msg.text || '').split('\n').slice(0, 20).map(l => `> ${l}`).join('\n');
+
+    wrap.innerHTML = `
+      <div style="margin-top:var(--space-4);border-top:1px solid var(--line);padding-top:var(--space-3);">
+        <label style="display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px;">
+          Reply to ${escapeHtml(msg.fromAddress)}
+        </label>
+        <textarea id="replyText" style="width:100%;min-height:150px;padding:10px;border:1px solid var(--line);border-radius:var(--radius-md);font-family:inherit;font-size:15px;background:var(--color-surface);color:var(--ink);resize:vertical;"></textarea>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">
+          <button type="button" class="btn" id="replySend">Send reply</button>
+          <button type="button" class="btn ghost" id="replyCancel">Cancel</button>
+          <span class="reply-status" id="replyStatus"></span>
+        </div>
+      </div>`;
+
+    const ta = document.getElementById('replyText');
+    ta.value = quoted;
+    ta.focus();
+    ta.setSelectionRange(0, 0);
+
+    document.getElementById('replyCancel').onclick = () => { wrap.innerHTML = ''; };
+    document.getElementById('replySend').onclick = async () => {
+      const status = document.getElementById('replyStatus');
+      const comment = ta.value.trim();
+      if (!comment) { status.textContent = 'Write something first.'; return; }
+      status.textContent = 'Sending…';
+      try {
+        const res = await fetch('/api/inbox/reply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            account: msg.account,
+            to: msg.fromAddress,
+            subject: msg.subject,
+            messageId: msg.messageId,
+            comment,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'failed');
+        }
+        status.textContent = 'Sent.';
+        setTimeout(() => { wrap.innerHTML = ''; }, 1200);
+      } catch (err) {
+        status.textContent = err.message || 'Failed to send — try again.';
+      }
+    };
+  }
+
+  function openAddClientFromEmail(msg){
     // Guess the company from the sender's domain — usually right, always editable.
     const domain = (msg.fromAddress.split('@')[1] || '').split('.')[0];
     const guess = domain ? domain.charAt(0).toUpperCase() + domain.slice(1) : '';
@@ -1030,16 +1123,17 @@
         closeModal();
         showBanner(`Added ${clientName} to the CRM.`, 'ok');
         loadCrm();
-        loadInbox();
+        await loadInbox();
+        openMessage(msg.account, msg.id);
       } catch (err) {
         modalStatus(err.message);
       }
     };
   }
 
-  function openTicketFromEmail(panel, msg){
-    // Reuse the ticket editor, pre-filled from the message, so both
-    // routes to a new ticket behave identically.
+  function openTicketFromEmail(msg){
+    // Reuse the ticket dialog, pre-filled, so both routes to a new ticket
+    // behave identically.
     const tomorrow = new Date(Date.now() + 86400000);
     tomorrow.setHours(17, 0, 0, 0);
 
@@ -1056,17 +1150,6 @@
       sourceUid: msg.id,
     });
   }
-
-  document.getElementById('inboxMessages').addEventListener('click', (e) => {
-    const replyBtn = e.target.closest('.reply-toggle');
-    if (replyBtn) { replyBox(replyBtn.closest('.msg-row')); return; }
-
-    // Ignore clicks inside an already-open panel so its own controls work.
-    if (e.target.closest('.msg-body') || e.target.closest('.reply-box')) return;
-
-    const row = e.target.closest('.msg-row');
-    if (row && row.dataset.id) openMessage(row);
-  });
 
   let mailDefaults = {};
 
