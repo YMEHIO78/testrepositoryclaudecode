@@ -19,6 +19,7 @@ const crm = require('./lib/crm');
 const tickets = require('./lib/tickets');
 const wave = require('./lib/wave');
 const projects = require('./lib/projects');
+const people = require('./lib/people');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -739,6 +740,64 @@ app.delete('/api/crm/contacts/:id', async (req, res) => {
   res.status(204).end();
 });
 
+// --- People ---
+
+app.get('/api/people', async (req, res) => {
+  try {
+    res.json({
+      engagements: people.ENGAGEMENTS,
+      people: await people.listPeople({ activeOnly: req.query.active === '1' }),
+    });
+  } catch (err) {
+    console.error('Failed to list people:', err);
+    res.status(500).json({ error: 'Could not load people.' });
+  }
+});
+
+app.post('/api/people', express.json(), async (req, res) => {
+  if (!req.body?.name) return res.status(400).json({ error: 'A name is required.' });
+  try {
+    res.status(201).json(await people.createPerson(req.body));
+  } catch (err) {
+    console.error('Failed to create person:', err);
+    res.status(500).json({ error: 'Could not add that person.' });
+  }
+});
+
+app.patch('/api/people/:id', express.json(), async (req, res) => {
+  try {
+    const updated = await people.updatePerson(Number(req.params.id), req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Not found.' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Failed to update person:', err);
+    res.status(500).json({ error: 'Could not update that person.' });
+  }
+});
+
+app.delete('/api/people/:id', async (req, res) => {
+  const removed = await people.deletePerson(Number(req.params.id));
+  if (!removed) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
+});
+
+app.post('/api/projects/:id/team', express.json(), async (req, res) => {
+  if (!req.body?.personId) return res.status(400).json({ error: 'personId is required.' });
+  try {
+    await people.assign(Number(req.params.id), Number(req.body.personId));
+    res.status(204).end();
+  } catch (err) {
+    if (err.code === '23503') return res.status(404).json({ error: 'That project or person no longer exists.' });
+    console.error('Failed to assign:', err);
+    res.status(500).json({ error: 'Could not assign that person.' });
+  }
+});
+
+app.delete('/api/projects/:id/team/:personId', async (req, res) => {
+  await people.unassign(Number(req.params.id), Number(req.params.personId));
+  res.status(204).end();
+});
+
 // --- Projects ---
 
 app.get('/api/projects', async (req, res) => {
@@ -796,6 +855,7 @@ app.get('/api/projects/:id/detail', async (req, res) => {
 
     detail.tasks = await projects.listTasks(project.id);
     detail.milestones = await projects.listMilestones(project.id);
+    detail.team = await people.listTeam(project.id);
 
     if (project.clientId) {
       try {

@@ -89,6 +89,17 @@ Indexed on `lower(email)` — that index is what lets an inbox sender be
 matched to a client on every inbox load. Only one contact per client may
 be primary; enforced on write, not by constraint.
 
+### `people` / `project_people`
+`people`: name, email, role, engagement (`owner`/`employee`/`contractor`),
+`rate_cents`, active, notes. `project_people` joins people to projects,
+cascading from both sides.
+
+**There is deliberately no access or permission column.** The app has a
+single shared login, so per-person access does not exist - storing a
+permission level would imply a boundary nothing enforces. The mockup
+showed an "Access: Project only" column; reproducing it would have been a
+fabricated security control, which is worse than a fabricated number.
+
 ### `projects` / `project_tasks` / `project_milestones`
 `projects`: name, `client_id` -> `clients` ON DELETE SET NULL, stage
 (`scoping`/`build`/`review`/`blocked`/`done`), health

@@ -208,6 +208,39 @@ else
     || ok "deleting a project clears its calendar entries"
 fi
 
+# ---------------------------------------------------------- people
+
+head_ "People"
+
+PE=$(api -X POST "$BASE_URL/api/people" -H 'Content-Type: application/json' \
+  -d '{"name":"Smoke Contractor","role":"Tester","engagement":"contractor","rateCents":6500}')
+PEID=$(echo "$PE" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+if [ -z "$PEID" ]; then
+  bad "could not create person" "$PE"
+else
+  ok "person created"
+  echo "$PE" | grep -q '"rateCents":6500' && ok "rate stored as cents" || bad "rate handling"
+
+  # No permission field should ever appear on a person record.
+  echo "$PE" | grep -qE '"(access|permission|scope)"' \
+    && bad "person record carries a permission field" "the app has no per-user access control" \
+    || ok "no fabricated permission field"
+
+  # Assignment round-trip via a throwaway project.
+  PJ2=$(api -X POST "$BASE_URL/api/projects" -H 'Content-Type: application/json' -d '{"name":"smoke team project"}')
+  PJ2ID=$(echo "$PJ2" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+  if [ -n "$PJ2ID" ]; then
+    api -o /dev/null -X POST "$BASE_URL/api/projects/$PJ2ID/team" \
+      -H 'Content-Type: application/json' -d "{\"personId\":$PEID}"
+    api "$BASE_URL/api/projects/$PJ2ID/detail" | grep -q 'Smoke Contractor' \
+      && ok "person assigned to a project" || bad "team assignment"
+    api -o /dev/null -X DELETE "$BASE_URL/api/projects/$PJ2ID"
+  fi
+
+  api -o /dev/null -X DELETE "$BASE_URL/api/people/$PEID"
+fi
+
 # ------------------------------------------------------------ mail
 
 head_ "Mail"

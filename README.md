@@ -159,6 +159,20 @@ Deleting a project cascades to its tasks and milestones, and explicitly
 clears their calendar entries first; the cascade alone would leave
 deadlines behind for a project that no longer exists.
 
+## People
+
+You plus contractors: role, engagement type, hourly rate, active flag,
+and which projects they are on. Assign people to a project from the
+project page.
+
+**No access control is implied or provided.** One shared login means
+everyone who can sign in sees everything, CRM and Finance included. This
+page records who your people are and what they cost - it restricts
+nothing. The mockup had an "Access" column claiming contractors were
+scoped to their projects; that was not reproduced because it would assert
+a security boundary that does not exist. Scoped access needs real
+per-user accounts first.
+
 ## Detail pages
 
 Clicking a row in **CRM** or **Service Desk** opens a detail page rather

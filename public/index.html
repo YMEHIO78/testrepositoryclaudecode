@@ -736,19 +736,26 @@
     <!-- ================= PEOPLE ================= -->
     <div class="view hidden" id="view-people">
       <h1>People</h1>
-      <p class="sub">You plus contractors. Rate and hours logged feed project cost; the access column is what each person can actually see in the app.</p>
+      <p class="sub">You plus contractors. Rates feed project cost; assignments show who is on what.</p>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+        <button type="button" class="btn" id="peopleAdd">Add person</button>
+        <select id="peopleFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
+          <option value="1">Active only</option>
+          <option value="">Everyone</option>
+        </select>
+      </div>
+
       <div class="card">
         <table>
-          <thead><tr><th>Name</th><th>Role</th><th>Type</th><th>Rate</th><th>On projects</th><th>Access</th></tr></thead>
-          <tbody>
-            <tr><td>Yosef</td><td>Owner</td><td>Owner</td><td>—</td><td>All</td><td>Full</td></tr>
-            <tr><td>J. Alvarado</td><td>Data engineer</td><td>Contractor</td><td class="num">$65/hr</td><td>Warehouse refresh fix</td><td>Project only</td></tr>
-            <tr><td>K. Fischer</td><td>Analyst</td><td>Contractor</td><td class="num">$50/hr</td><td>Analysis package — Q3</td><td>Project only</td></tr>
-          </tbody>
+          <thead><tr><th>Name</th><th>Role</th><th>Type</th><th>Rate</th><th>On projects</th></tr></thead>
+          <tbody id="peopleRows"><tr><td colspan="5" class="msg-snippet">Loading…</td></tr></tbody>
         </table>
       </div>
-      <div class="note">Contractors are scoped to the project pages they're assigned to — never to the CRM or Finance data.</div>
+
+      <div class="note"><b>No per-person access control exists.</b> The app has a single shared login, so everyone who can sign in sees everything — CRM and Finance included. This page records who your people are and what they cost; it does not restrict anything. Giving contractors scoped access would need real per-user accounts first.</div>
     </div>
+
 
     <!-- ================= INTEGRATIONS ================= -->
     <div class="view hidden" id="view-integrations">
@@ -2150,6 +2157,127 @@
   wireDetailLinks(document.getElementById('clientDetail'));
   wireDetailLinks(document.getElementById('ticketDetail'));
 
+  // --- People ---
+  let peopleData = { engagements: [], people: [] };
+
+  function rateLabel(cents){
+    return cents == null ? '—' : `${money(cents, false)}/hr`;
+  }
+
+  async function loadPeople(){
+    const rows = document.getElementById('peopleRows');
+    if (!rows) return;
+    const activeOnly = document.getElementById('peopleFilter').value === '1';
+    try {
+      peopleData = await (await fetch(`/api/people${activeOnly ? '?active=1' : ''}`)).json();
+    } catch (err) {
+      rows.innerHTML = '<tr><td colspan="5" class="msg-snippet">Could not load people.</td></tr>';
+      return;
+    }
+    renderPeople();
+  }
+
+  function renderPeople(){
+    const rows = document.getElementById('peopleRows');
+    if (!peopleData.people.length) {
+      rows.innerHTML = '<tr><td colspan="5" class="msg-snippet">Nobody recorded yet.</td></tr>';
+      return;
+    }
+    rows.innerHTML = peopleData.people.map(p => {
+      const eng = (peopleData.engagements.find(e => e.key === p.engagement)) || { label: p.engagement, tone: 'grey' };
+      return `
+        <tr data-id="${p.id}" style="cursor:pointer;${p.active ? '' : 'opacity:.55;'}">
+          <td><b>${escapeHtml(p.name)}</b>${p.active ? '' : ' <span class="sub">inactive</span>'}
+            ${p.email ? `<div class="sub">${escapeHtml(p.email)}</div>` : ''}</td>
+          <td>${escapeHtml(p.role || '—')}</td>
+          <td><span class="pill ${eng.tone}">${escapeHtml(eng.label)}</span></td>
+          <td class="num">${escapeHtml(rateLabel(p.rateCents))}</td>
+          <td>${p.projects.length
+            ? p.projects.map(pr => `<a data-project="${pr.id}">${escapeHtml(pr.name)}</a>`).join(', ')
+            : '<span class="sub">none</span>'}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('peopleFilter').addEventListener('change', loadPeople);
+  document.getElementById('peopleAdd').addEventListener('click', () => openPersonEditor(null));
+  document.getElementById('peopleRows').addEventListener('click', (e) => {
+    const link = e.target.closest('[data-project]');
+    if (link) { openProjectDetail(Number(link.dataset.project)); return; }
+    const tr = e.target.closest('tr[data-id]');
+    if (tr) openPersonEditor(peopleData.people.find(p => p.id === Number(tr.dataset.id)));
+  });
+
+  function openPersonEditor(person){
+    const isEdit = !!person;
+    const rate = person?.rateCents != null ? (person.rateCents / 100) : '';
+
+    const modal = openModal({
+      kicker: 'People',
+      title: isEdit ? escapeHtml(person.name) : 'Add person',
+      body: `
+        <label>Name</label>
+        <input type="text" id="peName" value="${escapeHtml(person?.name || '')}" placeholder="Jane Alvarado">
+        <div class="cols">
+          <div><label>Role</label><input type="text" id="peRole" value="${escapeHtml(person?.role || '')}" placeholder="Data engineer"></div>
+          <div>
+            <label>Type</label>
+            <select id="peEngagement">
+              ${peopleData.engagements.map(e =>
+                `<option value="${e.key}" ${(person?.engagement || 'contractor') === e.key ? 'selected' : ''}>${escapeHtml(e.label)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="cols">
+          <div><label>Email</label><input type="text" id="peEmail" value="${escapeHtml(person?.email || '')}"></div>
+          <div><label>Rate (USD/hr)</label><input type="number" id="peRate" value="${rate}" min="0" step="5"></div>
+        </div>
+        <label class="cal-checkbox" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);">
+          <input type="checkbox" id="peActive" ${person?.active !== false ? 'checked' : ''}> Currently active
+        </label>
+        <label>Notes</label>
+        <textarea id="peNotes">${escapeHtml(person?.notes || '')}</textarea>
+        <p class="msg-snippet" style="margin-top:var(--space-2);">Recording someone here does not give them access to the app — there is one shared login and no per-person accounts.</p>`,
+      actions: actionButtons(isEdit ? 'Save changes' : 'Add person', { destructive: isEdit ? 'Delete' : null }),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const name = document.getElementById('peName').value.trim();
+      if (!name) { modalStatus('Give them a name.'); return; }
+      const r = document.getElementById('peRate').value;
+      modalStatus('Saving…');
+      try {
+        const res = await fetch(isEdit ? `/api/people/${person.id}` : '/api/people', {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            role: document.getElementById('peRole').value.trim() || null,
+            engagement: document.getElementById('peEngagement').value,
+            email: document.getElementById('peEmail').value.trim() || null,
+            rateCents: r === '' ? null : Math.round(Number(r) * 100),
+            active: document.getElementById('peActive').checked,
+            notes: document.getElementById('peNotes').value.trim() || null,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save.');
+        closeModal();
+        loadPeople();
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
+
+    const del = modal.querySelector('[data-modal="delete"]');
+    if (del) del.onclick = async () => {
+      if (!confirm(`Remove ${person.name}? Their project assignments go too.`)) return;
+      await fetch(`/api/people/${person.id}`, { method: 'DELETE' });
+      closeModal();
+      loadPeople();
+    };
+  }
+
   // --- Projects ---
   let projData = { stages: [], health: [], taskStatuses: [], milestoneStatuses: [], projects: [], stats: {} };
   let projDetail = null;
@@ -2426,6 +2554,28 @@
           </div>
 
           <div class="detail-section">
+            <h2>Team</h2>
+            <div id="projTeam">
+              ${(d.team || []).length ? d.team.map(m => `
+                <div class="detail-row">
+                  <span><b>${escapeHtml(m.name)}</b>
+                    <div class="sub">${escapeHtml(m.role || 'no role')}${m.rateCents != null ? ' · ' + escapeHtml(rateLabel(m.rateCents)) : ''}</div></span>
+                  <button type="button" class="int-btn connected" data-unassign="${m.id}">Remove</button>
+                </div>`).join('')
+                : '<p class="detail-empty">Nobody assigned.</p>'}
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <select id="projTeamPick" style="flex:1;padding:6px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
+                <option value="">— add someone —</option>
+                ${peopleData.people
+                  .filter(pp => pp.active && !(d.team || []).some(m => m.id === pp.id))
+                  .map(pp => `<option value="${pp.id}">${escapeHtml(pp.name)}</option>`).join('')}
+              </select>
+              <button type="button" class="btn ghost" id="projTeamAdd">Assign</button>
+            </div>
+          </div>
+
+          <div class="detail-section">
             <h2>Invoices</h2>
             ${d.invoices.length ? d.invoices.map(i => `
               <div class="detail-row">
@@ -2444,6 +2594,25 @@
     document.getElementById('pdEdit').onclick = () =>
       openProjectEditor(p, () => openProjectDetail(p.id));
     document.getElementById('pdAddMs').onclick = () => openMilestoneEditor(p.id, null);
+
+    document.getElementById('projTeamAdd').onclick = async () => {
+      const personId = document.getElementById('projTeamPick').value;
+      if (!personId) return;
+      await fetch(`/api/projects/${p.id}/team`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ personId: Number(personId) }),
+      });
+      openProjectDetail(p.id);
+      loadPeople();
+    };
+
+    document.getElementById('projTeam').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-unassign]');
+      if (!btn) return;
+      await fetch(`/api/projects/${p.id}/team/${btn.dataset.unassign}`, { method: 'DELETE' });
+      openProjectDetail(p.id);
+      loadPeople();
+    });
 
     wireBoard(p.id);
   }
@@ -3655,7 +3824,7 @@
     loadFinance();
     loadScheduling();
     // CRM before tickets: the ticket editor's client dropdown reads from it.
-    loadCrm().then(loadTickets).then(loadProjects);
+    loadCrm().then(loadTickets).then(loadProjects).then(loadPeople);
 
     const params = new URLSearchParams(location.search);
     if (params.get('googleConnected')) {
