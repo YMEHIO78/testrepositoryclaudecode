@@ -172,6 +172,20 @@
   .row-icon.file{color:var(--muted);}
   .row-icon.sheet{color:var(--color-file-sheet);}
   .row-icon.deck{color:var(--color-file-deck);}
+  /* Package quantity stepper, from the design reference: 30px square
+     buttons either side of a fixed-width count, so the number does not
+     shift as it goes from 9 to 10. */
+  .stepper{display:inline-flex;align-items:center;gap:4px;flex:none;}
+  .step-btn{font-family:inherit;font-size:16px;line-height:1;width:30px;height:30px;color:var(--ink);background:none;border:1px solid var(--line);border-radius:2px;cursor:pointer;}
+  .step-btn:hover{background:var(--color-neutral-300);border-color:var(--brand);}
+  .step-btn:disabled{opacity:.35;cursor:default;background:none;border-color:var(--line);}
+  .step-qty{width:44px;text-align:center;font-size:18px;font-weight:600;}
+  .pkg-row{gap:20px;}
+  .pkg-sub{width:110px;text-align:right;font-weight:600;flex:none;}
+  .pkg-row[data-zero="1"]{opacity:.45;}
+  .pkg-total{border-bottom:0;padding-top:10px;}
+  .pkg-total .label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .pkg-total span:last-child{font-size:24px;font-weight:600;color:var(--brand);}
   tr:last-child td{border-bottom:none;}
   tr:hover td{background:#faf9f6;}
 
@@ -473,6 +487,7 @@
     <div class="nav-group">
       <div class="nav-label">Back office</div>
       <button class="nav-btn" data-view="finance">Finance</button>
+      <button class="nav-btn" data-view="packages">Packages</button>
       <button class="nav-btn" data-view="people">People</button>
     </div>
 
@@ -741,6 +756,26 @@
       </div>
 
       <div class="note" id="filesNote"></div>
+    </div>
+
+
+    <!-- ================= PACKAGES ================= -->
+    <div class="view hidden" id="view-packages">
+      <h1>Packages</h1>
+      <p class="sub">What you sell and what a unit of it costs. A client's value is the sum of unit price times quantity across these, so changing a price here moves every client carrying that package.</p>
+
+      <div style="display:flex;gap:8px;align-items:center;margin:18px 0 12px;flex-wrap:wrap;">
+        <button type="button" class="btn" id="pkgAdd">New package</button>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead><tr><th>Package</th><th>Unit price</th><th>Unit</th><th>On clients</th><th></th></tr></thead>
+          <tbody id="pkgRows"><tr><td colspan="5" class="msg-snippet">Loading…</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="note">Retiring a package keeps every existing client value exactly as it is and only hides it from new work. A package that no client carries is deleted outright.</div>
     </div>
 
 
@@ -2006,7 +2041,13 @@
   // Both are aggregate views: they pull from several sources and each
   // section degrades on its own rather than failing the page.
 
+  // Which client the detail page is currently showing. The stepper is a
+  // delegated handler on a container that outlives any one client, so it
+  // cannot close over the id.
+  let openClientId = null;
+
   async function openClientDetail(id){
+    openClientId = id;
     goto('client');
     const wrap = document.getElementById('clientDetail');
     wrap.innerHTML = '<p class="msg-snippet">Loading…</p>';
@@ -2086,6 +2127,33 @@
           </div>
 
           <div class="detail-section">
+            <h2>Packages &amp; quantities</h2>
+            <p class="detail-empty" style="margin-bottom:6px;">Quantities drive this client's value.</p>
+            ${(d.packages || []).length ? (d.packages || []).map(p => `
+              <div class="detail-row pkg-row" data-pkg="${p.id}">
+                <span>
+                  <b>${escapeHtml(p.name)}</b>${p.active ? '' : ' <span class="pill grey">retired</span>'}
+                  <div class="sub">${escapeHtml(money(p.unitCents, false))} ${escapeHtml(p.unitNote || '')}</div>
+                </span>
+                <span class="stepper">
+                  <button type="button" class="step-btn" data-step="-1" data-pkg="${p.id}" aria-label="Decrease ${escapeHtml(p.name)}">&minus;</button>
+                  <span class="step-qty" data-qty="${p.id}">${p.quantity}</span>
+                  <button type="button" class="step-btn" data-step="1" data-pkg="${p.id}" aria-label="Increase ${escapeHtml(p.name)}">+</button>
+                </span>
+                <span class="pkg-sub" data-sub="${p.id}">${escapeHtml(money(p.subtotalCents, false))}</span>
+              </div>`).join('')
+              : '<p class="detail-empty">No packages defined yet. Add them under Back office → Packages.</p>'}
+            <div class="detail-row pkg-total">
+              <span class="label">Client value</span>
+              <span id="cdPkgTotal">${escapeHtml(money(c.valueCents, c.recurring))}</span>
+            </div>
+            ${c.legacyValueCents && !c.valueCents ? `
+              <p class="detail-warn">This client had a typed value of
+                ${escapeHtml(money(c.legacyValueCents, c.recurring))} before packages existed.
+                Set the quantities above to replace it — the old figure is shown here so it
+                is not lost, and stops showing once a quantity is set.</p>` : ''}
+          </div>
+          <div class="detail-section">
             <h2>Files</h2>
             ${(d.files || []).length ? (d.files || []).slice(0, 12).map(f => `
               <div class="detail-row">
@@ -2136,7 +2204,71 @@
       const fresh = crmData.clients.find(x => x.id === c.id) || c;
       openClientEditor(fresh, () => openClientDetail(c.id));
     };
+
+    paintPkgRows(d.packages || []);
   }
+
+  // Dims rows at zero and disables their minus button, the way the
+  // reference does — a stepper that can go negative invites a value
+  // nobody meant to enter.
+  function paintPkgRows(list){
+    for (const p of list) {
+      const row = document.querySelector(`.pkg-row[data-pkg="${p.id}"]`);
+      if (!row) continue;
+      row.dataset.zero = p.quantity ? '0' : '1';
+      // Both buttons are re-enabled here, not just the minus: the click
+      // handler disables the pair while its request is in flight, so
+      // painting only one of them back would strand the other.
+      const minus = row.querySelector('[data-step="-1"]');
+      if (minus) minus.disabled = p.quantity === 0;
+      const plus = row.querySelector('[data-step="1"]');
+      if (plus) plus.disabled = false;
+      const qty = row.querySelector(`[data-qty="${p.id}"]`);
+      if (qty) qty.textContent = p.quantity;
+      const sub = row.querySelector(`[data-sub="${p.id}"]`);
+      if (sub) sub.textContent = money(p.subtotalCents, false);
+    }
+  }
+
+  // The stepper sends an absolute quantity, not a delta, so a fast double
+  // click or a retry cannot compound into a value nobody chose. The
+  // server returns the whole recalculated set, which is what the row
+  // subtotals and the total are then painted from — the browser never
+  // computes money it then displays as authoritative.
+  document.getElementById('clientDetail').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.step-btn');
+    if (!btn || btn.disabled) return;
+
+    const pkgId = Number(btn.dataset.pkg);
+    const row = btn.closest('.pkg-row');
+    const current = Number(row.querySelector(`[data-qty="${pkgId}"]`).textContent) || 0;
+    const next = Math.max(0, current + Number(btn.dataset.step));
+    if (next === current) return;
+
+    const clientId = openClientId;
+    row.querySelectorAll('.step-btn').forEach(b => { b.disabled = true; });
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/packages/${pkgId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantity: next }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Could not save.');
+
+      paintPkgRows(d.packages);
+      const total = document.getElementById('cdPkgTotal');
+      const client = crmData.clients.find(x => x.id === clientId);
+      if (total) total.textContent = money(d.valueCents, client ? client.recurring : false);
+
+      // The pipeline, dashboard totals and client list all read this
+      // number, so refresh them rather than leaving a stale figure behind.
+      loadCrm();
+    } catch (err) {
+      showBanner(err.message, 'error');
+      row.querySelectorAll('.step-btn').forEach(b => { b.disabled = false; });
+    }
+  });
 
   async function openTicketDetail(id){
     goto('ticket');
@@ -2243,6 +2375,128 @@
   }
   wireDetailLinks(document.getElementById('clientDetail'));
   wireDetailLinks(document.getElementById('ticketDetail'));
+
+  // --- Packages ---
+  // The price list behind every client's value. Kept editable rather than
+  // hardcoded because a price change here is a business event, not a
+  // deploy, and the alternative is a constant nobody dares touch.
+  let pkgData = { packages: [] };
+
+  async function loadPackages(){
+    const rows = document.getElementById('pkgRows');
+    if (!rows) return;
+    try {
+      pkgData = await (await fetch('/api/packages')).json();
+    } catch (err) {
+      rows.innerHTML = '<tr><td colspan="5" class="msg-snippet">Could not load packages.</td></tr>';
+      return;
+    }
+    renderPackages();
+  }
+
+  function renderPackages(){
+    const rows = document.getElementById('pkgRows');
+    if (!pkgData.packages.length) {
+      rows.innerHTML = '<tr><td colspan="5" class="msg-snippet">No packages yet.</td></tr>';
+      return;
+    }
+    rows.innerHTML = pkgData.packages.map(p => `
+      <tr data-id="${p.id}"${p.active ? '' : ' style="opacity:.55;"'}>
+        <td><b>${escapeHtml(p.name)}</b>${p.active ? '' : ' <span class="pill grey">retired</span>'}</td>
+        <td class="num">${escapeHtml(money(p.unitCents, false))}</td>
+        <td>${escapeHtml(p.unitNote || '—')}</td>
+        <td>${p.inUse ? 'in use' : '—'}</td>
+        <td>
+          <button type="button" class="int-btn" data-edit="${p.id}">Edit</button>
+          <button type="button" class="int-btn connected" data-del="${p.id}">${p.active ? 'Retire' : 'Delete'}</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function openPackageEditor(pkg){
+    const dollars = pkg ? (pkg.unitCents / 100) : '';
+    const modal = openModal({
+      kicker: 'Packages',
+      title: pkg ? escapeHtml(pkg.name) : 'New package',
+      body: `
+        <label>Name</label>
+        <input type="text" id="pkName" value="${pkg ? escapeHtml(pkg.name) : ''}" placeholder="Data Analysis">
+        <div class="cols">
+          <div>
+            <label>Unit price (USD)</label>
+            <input type="number" id="pkUnit" value="${dollars}" min="0" step="10" placeholder="950">
+          </div>
+          <div>
+            <label>Unit</label>
+            <input type="text" id="pkNote" value="${pkg ? escapeHtml(pkg.unitNote || '') : ''}" placeholder="per analysis workstream">
+          </div>
+        </div>
+        ${pkg ? `<label class="cal-checkbox" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);">
+          <input type="checkbox" id="pkActive" ${pkg.active ? 'checked' : ''}> Available for new work
+        </label>` : ''}
+        ${pkg && pkg.inUse ? '<p class="msg-snippet" style="margin-top:var(--space-2);">Clients carry this package. Changing the unit price changes their value immediately.</p>' : ''}`,
+      actions: actionButtons(pkg ? 'Save' : 'Create'),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const name = document.getElementById('pkName').value.trim();
+      const raw = document.getElementById('pkUnit').value;
+      if (!name) { modalStatus('Give it a name.'); return; }
+      if (raw === '') { modalStatus('Give it a unit price.'); return; }
+
+      const body = {
+        name,
+        unitCents: Math.round(Number(raw) * 100),
+        unitNote: document.getElementById('pkNote').value.trim() || null,
+      };
+      const activeEl = document.getElementById('pkActive');
+      if (activeEl) body.active = activeEl.checked;
+
+      modalStatus('Saving…');
+      try {
+        const res = await fetch(pkg ? `/api/packages/${pkg.id}` : '/api/packages', {
+          method: pkg ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Could not save.');
+        closeModal();
+        loadPackages();
+        // A price change moves every client carrying it, so the client
+        // list and the dashboard totals are stale the moment this saves.
+        loadCrm();
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
+  }
+
+  document.getElementById('pkgAdd').addEventListener('click', () => openPackageEditor(null));
+
+  document.getElementById('pkgRows').addEventListener('click', async (e) => {
+    const edit = e.target.closest('[data-edit]');
+    if (edit) {
+      openPackageEditor(pkgData.packages.find(p => p.id === Number(edit.dataset.edit)));
+      return;
+    }
+    const del = e.target.closest('[data-del]');
+    if (!del) return;
+
+    const pkg = pkgData.packages.find(p => p.id === Number(del.dataset.del));
+    const question = pkg && pkg.inUse
+      ? `Retire "${pkg.name}"? Clients carrying it keep their value exactly as it is; it just stops appearing for new work.`
+      : `Delete "${pkg ? pkg.name : 'this package'}"? No client carries it.`;
+    if (!confirm(question)) return;
+
+    const res = await fetch(`/api/packages/${del.dataset.del}`, { method: 'DELETE' });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.retired) {
+      showBanner(`Retired — ${d.clients} client${d.clients === 1 ? '' : 's'} keep their existing value.`, 'ok');
+    }
+    loadPackages();
+  });
 
   // --- Files ---
   // A folder browser, always showing one level. The client selector
@@ -3529,7 +3783,6 @@
 
   function openClientEditor(client, onSaved){
     const isEdit = !!client;
-    const dollars = client?.valueCents != null ? (client.valueCents / 100) : '';
 
     const modal = openModal({
       kicker: 'Clients & Leads',
@@ -3537,18 +3790,11 @@
       body: `
         <label>Client / lead name</label>
         <input type="text" id="clName" value="${escapeHtml(client?.name || '')}" placeholder="Acme Logistics">
-        <div class="cols">
-          <div>
-            <label>Stage</label>
-            <select id="clStage">
-              ${crmData.stages.map(s => `<option value="${s.key}" ${client?.stage === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <label>Value (USD)</label>
-            <input type="number" id="clValue" value="${dollars}" min="0" step="50" placeholder="4200">
-          </div>
-        </div>
+        <label>Stage</label>
+        <select id="clStage">
+          ${crmData.stages.map(s => `<option value="${s.key}" ${client?.stage === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
+        </select>
+        ${isEdit ? `<p class="msg-snippet" style="margin-top:var(--space-2);">Value is set by package quantities on this client's page, not typed here.</p>` : ''}
         <label class="cal-checkbox" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);">
           <input type="checkbox" id="clRecurring" ${client?.recurring ? 'checked' : ''}> Recurring monthly
         </label>
@@ -3579,7 +3825,6 @@
     modal.querySelector('[data-modal="save"]').onclick = async () => {
       const name = document.getElementById('clName').value.trim();
       if (!name) { modalStatus('Give it a name.'); return; }
-      const rawValue = document.getElementById('clValue').value;
       modalStatus('Saving…');
       try {
         const res = await fetch(isEdit ? `/api/crm/clients/${client.id}` : '/api/crm/clients', {
@@ -3588,7 +3833,6 @@
           body: JSON.stringify({
             name,
             stage: document.getElementById('clStage').value,
-            valueCents: rawValue === '' ? null : Math.round(Number(rawValue) * 100),
             recurring: document.getElementById('clRecurring').checked,
             notes: document.getElementById('clNotes').value.trim() || null,
             lastTouchAt: client?.lastTouchAt || null,
@@ -4320,7 +4564,7 @@
     loadFinance();
     loadScheduling();
     // CRM before tickets: the ticket editor's client dropdown reads from it.
-    loadCrm().then(loadTickets).then(loadProjects).then(loadPeople).then(loadFiles);
+    loadCrm().then(loadTickets).then(loadProjects).then(loadPeople).then(loadFiles).then(loadPackages);
 
     const params = new URLSearchParams(location.search);
     if (params.get('googleConnected')) {

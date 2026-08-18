@@ -150,16 +150,18 @@ fi
 head_ "CRM"
 
 CL=$(api -X POST "$BASE_URL/api/crm/clients" -H 'Content-Type: application/json' \
-  -d '{"name":"Smoke Test Co","stage":"client","valueCents":123456,"recurring":true}')
+  -d '{"name":"Smoke Test Co","stage":"client","recurring":true}')
 CLID=$(echo "$CL" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
 
 if [ -z "$CLID" ]; then
   bad "could not create client" "$CL"
 else
   ok "client created"
-  echo "$CL" | grep -q '"valueCents":123456' \
-    && ok "money stored as integer cents" \
-    || bad "money handling" "valueCents was not round-tripped"
+  # Value is derived from package quantities now, never typed, so a new
+  # client starts at zero rather than at whatever was posted.
+  echo "$CL" | grep -q '"valueCents":0' \
+    && ok "a new client's value starts derived at zero" \
+    || bad "client value not derived" "$(echo "$CL" | head -c 150)"
 
   # Detail page aggregates several sources; each must degrade on its own
   # rather than failing the response.
@@ -170,6 +172,69 @@ else
   echo "$CD" | grep -q '"warnings"' && ok "client detail reports warnings" || bad "client detail warnings"
 
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$CLID"
+fi
+
+# -------------------------------------------------------- packages
+
+head_ "Packages and derived client value"
+
+PK=$(api -X POST "$BASE_URL/api/packages" -H 'Content-Type: application/json' \
+  -d '{"name":"Smoke Package","unitCents":25000,"unitNote":"per smoke test"}')
+PKID=$(echo "$PK" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+PC=$(api -X POST "$BASE_URL/api/crm/clients" -H 'Content-Type: application/json' \
+  -d '{"name":"Smoke Package Co","stage":"client"}')
+PCID=$(echo "$PC" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+if [ -z "$PKID" ] || [ -z "$PCID" ]; then
+  bad "could not set up package test" "pkg=$PKID client=$PCID"
+else
+  ok "package created"
+
+  setqty() {
+    api -X PUT "$BASE_URL/api/crm/clients/$PCID/packages/$PKID" \
+      -H 'Content-Type: application/json' -d "{\"quantity\":$1}"
+  }
+
+  # 3 x $250.00 = $750.00. The whole point of the feature: the client's
+  # value is this product, not a number somebody typed.
+  setqty 3 | grep -q '"valueCents":75000' \
+    && ok "value derives from unit price times quantity" \
+    || bad "derived value wrong" "$(setqty 3 | head -c 150)"
+
+  api "$BASE_URL/api/crm/clients/$PCID" 2>/dev/null >/dev/null
+  api "$BASE_URL/api/crm/clients" | grep -q '"valueCents":75000' \
+    && ok "the client list reports the derived value" || bad "list value not derived"
+
+  # Absolute, not incremental: setting the same quantity twice must not
+  # compound. A stepper double-click would otherwise double the money.
+  setqty 3 > /dev/null
+  setqty 3 | grep -q '"valueCents":75000' \
+    && ok "setting the same quantity twice does not compound" \
+    || bad "quantity compounded on repeat"
+
+  # Repricing the package must move every client carrying it, with no
+  # cached total left behind to go stale.
+  api -o /dev/null -X PATCH "$BASE_URL/api/packages/$PKID" \
+    -H 'Content-Type: application/json' -d '{"unitCents":30000}'
+  api "$BASE_URL/api/crm/clients/$PCID/packages" | grep -q '"valueCents":90000' \
+    && ok "repricing a package moves the client value" \
+    || bad "reprice did not propagate"
+
+  # A package on a client retires rather than deletes, so the client's
+  # value survives. Nothing here is backed up.
+  DELP=$(api -X DELETE "$BASE_URL/api/packages/$PKID")
+  echo "$DELP" | grep -q '"retired":true' \
+    && ok "a package in use retires instead of deleting" || bad "package deleted while in use" "$DELP"
+  api "$BASE_URL/api/crm/clients/$PCID/packages" | grep -q '"valueCents":90000' \
+    && ok "retiring leaves the client value untouched" || bad "value changed on retire"
+
+  # Back to zero, and now it is unused, so it deletes outright.
+  setqty 0 > /dev/null
+  api -X DELETE "$BASE_URL/api/packages/$PKID" | grep -q '"retired":false' \
+    && ok "an unused package deletes outright" || bad "unused package did not delete"
+
+  api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$PCID"
 fi
 
 # -------------------------------------------------------- projects

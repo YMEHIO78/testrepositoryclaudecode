@@ -22,6 +22,7 @@ const projects = require('./lib/projects');
 const people = require('./lib/people');
 const files = require('./lib/files');
 const folders = require('./lib/folders');
+const packages = require('./lib/packages');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -619,7 +620,16 @@ app.get('/api/crm/clients/:id/detail', async (req, res) => {
     const client = await crm.getClient(Number(req.params.id));
     if (!client) return res.status(404).json({ error: 'Not found.' });
 
-    const detail = { client, tickets: [], emails: [], invoices: [], files: [], warnings: [] };
+    const detail = {
+      client, tickets: [], emails: [], invoices: [], files: [],
+      packages: [], warnings: [],
+    };
+
+    try {
+      detail.packages = await packages.clientPackages(client.id);
+    } catch (err) {
+      detail.warnings.push(`Packages unavailable: ${err.message}`);
+    }
 
     try {
       const all = await tickets.listTickets({ openOnly: false });
@@ -748,6 +758,81 @@ app.delete('/api/crm/contacts/:id', async (req, res) => {
   const removed = await crm.deleteContact(Number(req.params.id));
   if (!removed) return res.status(404).json({ error: 'Not found.' });
   res.status(204).end();
+});
+
+// --- Packages ---
+// Service packages and their unit prices. A client's value is the sum of
+// unit price times quantity across these, so editing a price here moves
+// every client carrying that package.
+
+app.get('/api/packages', async (req, res) => {
+  try {
+    res.json({ packages: await packages.listPackages({ activeOnly: req.query.active === '1' }) });
+  } catch (err) {
+    console.error('Failed to list packages:', err);
+    res.status(500).json({ error: 'Could not load packages.' });
+  }
+});
+
+app.post('/api/packages', express.json(), async (req, res) => {
+  try {
+    res.status(201).json(await packages.createPackage(req.body || {}));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.patch('/api/packages/:id', express.json(), async (req, res) => {
+  try {
+    const updated = await packages.updatePackage(Number(req.params.id), req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Not found.' });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Retires rather than deletes once a package is on a client — see
+// lib/packages.js. The response says which happened so the UI can be
+// honest about it.
+app.delete('/api/packages/:id', async (req, res) => {
+  try {
+    const result = await packages.removePackage(Number(req.params.id));
+    if (!result) return res.status(404).json({ error: 'Not found.' });
+    res.json(result);
+  } catch (err) {
+    console.error('Failed to remove package:', err);
+    res.status(500).json({ error: 'Could not remove that package.' });
+  }
+});
+
+app.get('/api/crm/clients/:id/packages', async (req, res) => {
+  try {
+    const clientId = Number(req.params.id);
+    res.json({
+      packages: await packages.clientPackages(clientId),
+      valueCents: await packages.valueFor(clientId),
+    });
+  } catch (err) {
+    console.error('Failed to load client packages:', err);
+    res.status(500).json({ error: 'Could not load packages.' });
+  }
+});
+
+// Absolute quantity rather than an increment, so a double-tapped stepper
+// or a retried request cannot compound.
+app.put('/api/crm/clients/:id/packages/:packageId', express.json(), async (req, res) => {
+  try {
+    const clientId = Number(req.params.id);
+    await packages.setQuantity(clientId, Number(req.params.packageId), (req.body || {}).quantity);
+    res.json({
+      packages: await packages.clientPackages(clientId),
+      valueCents: await packages.valueFor(clientId),
+    });
+  } catch (err) {
+    console.error('Failed to set quantity:', err);
+    res.status(400).json({ error: 'Could not save that quantity.' });
+  }
 });
 
 // --- Files ---
