@@ -30,7 +30,7 @@ Also:
   down.
 - **Note when a *test* was wrong**, not just when code was. Several false
   alarms this project came from bad test harnesses; that pattern is worth
-  remembering. The worst was in `bad()` itself: it ended on a `[ -n "" ]`
+  remembering. The worst was in `bad()` itself: it ended on a `[ -n "$2" ]`
   test, so calling it without a detail string returned non-zero and any
   check written `cond && bad "x" || ok "y"` reported a FAIL *and* a PASS
   for the same assertion. Checks written the other way round were fine,
