@@ -103,11 +103,17 @@ Actions right-aligned; destructive action pushed left with `margin-right:auto`.
   obvious the record is owned elsewhere.
 - **HTML email renders inside a `sandbox` iframe.** Never inject mail
   HTML into the page.
-- **Nav badges show a real count or nothing at all.** A zero renders
-  empty, and a badge stays empty until its data has loaded — a blank
-  badge is honest about not knowing, a number is not. They come from the
-  same sources the views use: mailbox-wide `UNSEEN` summed across
-  accounts, non-lost clients, and the server's open-ticket stat.
+- **A nav badge means "this arrived while you weren't looking."** Only
+  Inbox and Service Desk get one — unread mail turns up on its own, and
+  an open ticket is outstanding work with a lifecycle. Clients & Leads
+  deliberately has none: records there exist only because someone typed
+  them in, so a count would answer a question nobody asks while implying
+  news that cannot happen. Do not add badges that are merely row counts.
+- **A badge shows a real count or nothing at all.** A zero renders empty,
+  and a badge stays empty until its data has loaded — a blank badge is
+  honest about not knowing, a number is not. They come from the same
+  sources the views use: mailbox-wide `UNSEEN` summed across accounts,
+  and the server's open-ticket stat.
 
   These three were hardcoded mockup values (`3`, `14`, `5`) that survived
   every module built on top of them, because nothing ever read them and

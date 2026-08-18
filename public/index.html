@@ -464,7 +464,7 @@
 
     <div class="nav-group">
       <div class="nav-label">Clients</div>
-      <button class="nav-btn" data-view="crm">Clients &amp; Leads <span class="nav-badge" id="navBadgeCrm"></span></button>
+      <button class="nav-btn" data-view="crm">Clients &amp; Leads</button>
       <button class="nav-btn" data-view="projects">Projects</button>
       <button class="nav-btn" data-view="tickets">Service Desk <span class="nav-badge" id="navBadgeTickets"></span></button>
       <button class="nav-btn" data-view="files">Files &amp; Folders</button>
@@ -1238,9 +1238,10 @@
     set('navBadgeInbox', Object.values(inboxData.counts || {})
       .reduce((s, c) => s + (c.unseen || 0), 0));
 
-    // Everything still in play. Lost is excluded - a count in the nav
-    // reads as "these want attention", and a lost lead does not.
-    set('navBadgeCrm', (crmData.clients || []).filter(c => c.stage !== 'lost').length);
+    // Clients & Leads deliberately has no badge. A badge in a nav means
+    // "this arrived while you were not looking"; clients only exist
+    // because someone typed them in, so a count there would answer a
+    // question nobody asks while implying news that cannot happen.
 
     // Server-computed, so the view's own open/all filter cannot move it.
     set('navBadgeTickets', tkData.stats?.open ?? 0);
