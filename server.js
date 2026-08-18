@@ -24,6 +24,7 @@ const files = require('./lib/files');
 const folders = require('./lib/folders');
 const packages = require('./lib/packages');
 const search = require('./lib/search');
+const exporter = require('./lib/export');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -764,6 +765,45 @@ app.delete('/api/crm/contacts/:id', async (req, res) => {
   const removed = await crm.deleteContact(Number(req.params.id));
   if (!removed) return res.status(404).json({ error: 'Not found.' });
   res.status(204).end();
+});
+
+// --- Backup export ---
+// The only backup this app has. Railway's volume backups are Pro-gated
+// and this workspace is on Hobby, so there are no database snapshots —
+// see HANDOFF.md. Credentials and file bytes are excluded; lib/export.js
+// explains why.
+
+app.get('/api/export', async (req, res) => {
+  try {
+    const payload = await exporter.buildExport();
+    const stamp = payload.exportedAt.slice(0, 10);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition',
+      `attachment; filename="pocket-data-office-${stamp}.json"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(JSON.stringify(payload, null, 2));
+  } catch (err) {
+    console.error('Export failed:', err);
+    res.status(500).json({ error: 'Could not build the export.' });
+  }
+});
+
+// Counts without the payload, so the UI can say what a download would
+// contain before you take one.
+app.get('/api/export/summary', async (req, res) => {
+  try {
+    const payload = await exporter.buildExport();
+    res.json({
+      exportedAt: payload.exportedAt,
+      counts: payload.counts,
+      excluded: payload.excluded,
+      warnings: payload.warnings,
+      totalRows: Object.values(payload.counts).reduce((a, b) => a + b, 0),
+    });
+  } catch (err) {
+    console.error('Export summary failed:', err);
+    res.status(500).json({ error: 'Could not summarise the export.' });
+  }
 });
 
 // --- Search ---

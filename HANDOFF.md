@@ -44,6 +44,8 @@ lib/wave.js            Wave GraphQL client (invoices)
 lib/projects.js        projects, tasks, milestone-to-calendar projection
 lib/people.js          the team roster (no permissions - single shared login)
 lib/packages.js        packages and quantities; client value is derived, never stored
+lib/search.js          search over local records; deliberately excludes mail
+lib/export.js          JSON backup export; strips credentials and file bytes
 lib/files.js           file metadata in Postgres, bytes in object storage
 lib/folders.js         the folder tree; deleting one reparents, never cascades
 ```
@@ -207,10 +209,14 @@ System spec (a static reference page; nothing to wire up)
   facts above for what the plan does and does not allow.
 - Mail is safe (it lives on Hostinger's IMAP server, not here) and the
   code is on GitHub. Everything else is single-copy.
-- Two routes were offered and neither was built yet, by choice: a manual
-  "download a full JSON export" endpoint, and a scheduled off-site copy to
-  a second S3-compatible provider (Backblaze B2 or Cloudflare R2 — the
-  same `@aws-sdk/client-s3` code works against either). **Not built.**
+- **A manual JSON export now exists** at Back office → Backup, covering
+  every database table. It excludes credentials by design and does NOT
+  include file bytes - see the Backup section of the README.
+- Still missing: a **scheduled off-site copy** of both the database and
+  the bucket objects to a second S3-compatible provider (Backblaze B2 or
+  Cloudflare R2 - the same `@aws-sdk/client-s3` code works against
+  either). The manual button only protects you as often as it is pressed,
+  and nothing protects the bucket. **Not built.**
 
 **Feature gaps in what already works:**
 - Inbox: forward, reply, search, pagination and attachment downloads all

@@ -548,6 +548,7 @@
       <div class="nav-label">Back office</div>
       <button class="nav-btn" data-view="finance">Finance</button>
       <button class="nav-btn" data-view="packages">Packages</button>
+      <button class="nav-btn" data-view="backup">Backup</button>
       <button class="nav-btn" data-view="people">People</button>
     </div>
 
@@ -826,6 +827,28 @@
       <div class="note" id="filesNote"></div>
     </div>
 
+
+    <!-- ================= BACKUP ================= -->
+    <div class="view hidden" id="view-backup">
+      <h1>Backup</h1>
+      <p class="sub">This app has no automatic backups. Railway's database snapshots need the Pro plan and this workspace is on Hobby, so every record below exists in exactly one copy until you download it.</p>
+
+      <div class="stat-strip" id="backupStats"></div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin:18px 0 12px;flex-wrap:wrap;">
+        <a class="btn" id="backupDownload" href="/api/export" download>Download backup</a>
+        <span class="msg-snippet" id="backupStatus"></span>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead><tr><th>Table</th><th class="num">Rows</th></tr></thead>
+          <tbody id="backupRows"><tr><td colspan="2" class="msg-snippet">Loading…</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="note" id="backupNote"></div>
+    </div>
 
     <!-- ================= SEARCH ================= -->
     <div class="view hidden" id="view-search">
@@ -2485,6 +2508,63 @@
   }
   wireDetailLinks(document.getElementById('clientDetail'));
   wireDetailLinks(document.getElementById('ticketDetail'));
+
+  // --- Backup ---
+  // Shows what a download would contain before you take one, and is
+  // explicit about what it does not cover. An export that quietly omits
+  // your files while calling itself a backup is worse than none, because
+  // it buys confidence it has not earned.
+  async function loadBackup(){
+    const rows = document.getElementById('backupRows');
+    if (!rows) return;
+
+    let d;
+    try {
+      d = await (await fetch('/api/export/summary')).json();
+    } catch (err) {
+      rows.innerHTML = '<tr><td colspan="2" class="msg-snippet">Could not read the database.</td></tr>';
+      return;
+    }
+
+    const fileRows = d.counts?.files ?? 0;
+    document.getElementById('backupStats').innerHTML = `
+      <div class="stat-cell">
+        <span class="label">Rows</span>
+        <span class="value accent">${d.totalRows ?? 0}</span>
+        <span class="note">across ${Object.keys(d.counts || {}).length} tables</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Covered</span>
+        <span class="value small">Database</span>
+        <span class="note">records, not stored file contents</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Automatic backups</span>
+        <span class="value small">None</span>
+        <span class="note">Pro plan feature; this workspace is Hobby</span>
+      </div>`;
+
+    const entries = Object.entries(d.counts || {}).sort((a, b) => b[1] - a[1]);
+    rows.innerHTML = entries.length
+      ? entries.map(([table, n]) => `
+          <tr><td>${escapeHtml(table)}</td><td class="num">${n}</td></tr>`).join('')
+      : '<tr><td colspan="2" class="msg-snippet">Nothing to export yet.</td></tr>';
+
+    const excluded = Object.entries(d.excluded || {})
+      .map(([t, why]) => `<b>${escapeHtml(t)}</b> (${escapeHtml(why)})`).join(', ');
+
+    document.getElementById('backupNote').innerHTML = `
+      <b>What this does not cover.</b> The ${fileRows} file record${fileRows === 1 ? '' : 's'}
+      above ${fileRows === 1 ? 'is' : 'are'} names, sizes and filing — <em>not</em> the stored
+      contents. Object storage has no versioning on any plan, so uploaded files still have
+      exactly one copy. Mail is unaffected; it lives on the mail server, not here.
+      Excluded on purpose: ${excluded || 'nothing'} — a file combining encrypted secrets with
+      the key's own environment is worse to have lying around than not to have.
+      ${(d.warnings || []).length ? `<br><b>Warnings:</b> ${escapeHtml(d.warnings.join('; '))}` : ''}`;
+
+    document.getElementById('backupStatus').textContent =
+      `Last checked ${new Date(d.exportedAt).toLocaleString()}`;
+  }
 
   // --- Search ---
   // One box in the rail, results grouped by what they are. Every hit is a
@@ -4970,7 +5050,7 @@
     loadFinance();
     loadScheduling();
     // CRM before tickets: the ticket editor's client dropdown reads from it.
-    loadCrm().then(loadTickets).then(loadProjects).then(loadPeople).then(loadFiles).then(loadPackages);
+    loadCrm().then(loadTickets).then(loadProjects).then(loadPeople).then(loadFiles).then(loadPackages).then(loadBackup);
 
     const params = new URLSearchParams(location.search);
     if (params.get('googleConnected')) {

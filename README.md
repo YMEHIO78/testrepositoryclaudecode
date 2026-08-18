@@ -388,6 +388,45 @@ Downloads are forced with `Content-Disposition: attachment` plus
 anything path-like. Mail attachments are untrusted; letting the browser
 render one inline would run it in the app's own origin.
 
+## Backup
+
+**Back office → Backup** downloads every database record as one JSON
+file. It exists because this app has no automatic backups at all:
+Railway's volume snapshots are a Pro feature and this workspace is on
+Hobby, so nothing is being kept anywhere else.
+
+The page shows a row count per table before you download, so you can see
+what you are getting.
+
+### What it does not cover — read this before trusting it
+
+- **File contents.** The export includes the `files` table — names,
+  sizes, which client and folder each was filed under — but **not the
+  stored bytes**. Object storage has no versioning on any plan, so
+  uploaded files still have exactly one copy. A restore from this export
+  would rebuild the index and point at objects that might not be there.
+- **Mail.** It lives on the mail server and was never ours to lose.
+
+### What is deliberately excluded
+
+`mail_accounts` and `oauth_tokens` hold encrypted secrets, and
+`app_settings.calendar_feed_token` is a credential in its own right. All
+three are stripped.
+
+The reasoning: their encryption key is an environment variable, so a file
+combining the ciphertext with anything that could sit alongside the key
+is a worse thing to have on a laptop than no file at all. Smoke tests
+assert none of the three appear in the output — that check is the point,
+not a formality.
+
+### What this still does not solve
+
+This is a manual button. It protects you only as often as you press it,
+and it does nothing for the bucket. The remaining gap is a scheduled
+copy of both database and objects to a second provider (Backblaze B2 or
+Cloudflare R2 — both S3-compatible, so `lib/files.js` already speaks the
+protocol). **Not built.**
+
 ## Packages
 
 What you sell and what a unit of it costs. **A client's value is the sum
@@ -658,6 +697,8 @@ lib/wave.js             Wave GraphQL client: invoices into Finance
 lib/projects.js         projects, tasks, milestone-to-calendar projection
 lib/people.js           the team roster
 lib/packages.js         service packages; client value is derived from these
+lib/search.js           search across local records (not mail)
+lib/export.js           the JSON backup export; excludes credentials
 lib/files.js            file metadata in Postgres, bytes in object storage
 lib/folders.js          the folder tree; deleting one reparents, never cascades
 scripts/smoke-test.sh   regression checks against a running instance

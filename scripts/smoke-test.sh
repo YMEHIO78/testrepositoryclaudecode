@@ -205,6 +205,35 @@ else
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$CLID"
 fi
 
+# --------------------------------------------------------- backup
+
+head_ "Backup export"
+
+SUM=$(api "$BASE_URL/api/export/summary")
+echo "$SUM" | grep -q '"counts"' && ok "export summary responds" || bad "export summary" "$(echo "$SUM" | head -c 150)"
+
+EXP=$(api "$BASE_URL/api/export")
+echo "$EXP" | grep -q '"formatVersion":1' && ok "export builds" || bad "export failed"
+echo "$EXP" | grep -q '"clients"' && ok "export includes clients" || bad "clients missing from export"
+echo "$EXP" | grep -q '"packages"' && ok "export includes packages" || bad "packages missing from export"
+
+# Credentials must never be in a file that gets downloaded to a laptop.
+echo "$EXP" | grep -q 'encrypted_password' \
+  && bad "the export contains mailbox credentials" "these must stay out" \
+  || ok "mailbox credentials are excluded"
+echo "$EXP" | grep -q 'calendar_feed_token' \
+  && bad "the export contains the calendar feed token" \
+  || ok "the calendar feed token is excluded"
+echo "$EXP" | grep -q 'oauth_tokens' \
+  && bad "the export contains oauth tokens" || ok "oauth tokens are excluded"
+
+# It has to arrive as a file, not render in the browser.
+BH=$(api -D - -o /dev/null "$BASE_URL/api/export")
+echo "$BH" | grep -qi 'content-disposition: attachment' \
+  && ok "the export downloads as a file" || bad "export disposition"
+echo "$BH" | grep -qi 'filename="pocket-data-office-' \
+  && ok "the download is date-stamped" || bad "export filename"
+
 # --------------------------------------------------------- search
 
 head_ "Search"
