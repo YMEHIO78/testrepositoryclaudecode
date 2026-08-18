@@ -66,18 +66,26 @@ Builds take **about three minutes**. `get-logs` returns an empty array
 while a build is in progress — that is not evidence of a hang. Wait for
 the status to change to SUCCESS before concluding anything.
 
+**Setting a variable does not apply it.** Railway stages variable changes
+and they only reach the running app on the next deploy, so a new
+integration can look wired up and still be missing at runtime. Confirm
+with `list-variables` that the name is actually on the service, then
+deploy. This bit the `FILES_*` bucket variables — they had been set once
+and were simply not there.
+
 ### Verifying
 
 `scripts/smoke-test.sh` exercises the paths that have broken before.
 Run it after any change touching mail, calendar, scheduling, tickets,
-CRM, or Wave:
+CRM, projects, people, files, or Wave:
 
 ```bash
 AUTH_USER=... AUTH_PASS=... bash scripts/smoke-test.sh
 ```
 
-It only reads and cleans up after itself, but it does create and delete
-records against the live app, so don't run it while someone is using it.
+It creates and deletes records against the live app — including a real
+upload to the live bucket — and cleans up after itself, so don't run it
+while someone is using the app.
 
 ### Shell gotcha
 
@@ -114,7 +122,7 @@ the auth-gate middleware are public, and three things depend on that —
 the `.ics` calendar feed, the public booking pages, and `/healthz`.
 Calendar clients and booking visitors cannot authenticate.
 
-`public/index.html` is the whole front end in one file (~2,700 lines).
+`public/index.html` is the whole front end in one file (~4,000 lines).
 It opens with a section map; navigate by grepping the markers rather than
 scrolling.
 
@@ -134,6 +142,11 @@ is documented in `HANDOFF.md`:
   user's business to be on a paid tier.
 - **Do not build the "AI Agent" view** that appears in the design
   reference. The project README explicitly rules it out.
+- **File storage is Railway Buckets, and the alternatives were checked.**
+  There is no `pocketdataoffice.com` OneDrive (no Microsoft tenant on the
+  domain), Proton Drive has no public API, and self-hosting means a
+  second server to patch and back up. The accepted cost is no backup and
+  no version history — see the Outstanding work section of `HANDOFF.md`.
 
 ## Design
 

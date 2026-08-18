@@ -185,6 +185,21 @@ Setup is just the `FILES_*` variables; on Railway they come from the
 bucket as reference variables, so nothing is pasted by hand. Uploads are
 disabled and the UI says so if they're missing.
 
+The bucket is `pdo-files` in the same project. Its own variable names are
+short, and the service maps them across:
+
+```
+FILES_BUCKET            ${{pdo-files.BUCKET}}
+FILES_ACCESS_KEY_ID     ${{pdo-files.ACCESS_KEY_ID}}
+FILES_SECRET_ACCESS_KEY ${{pdo-files.SECRET_ACCESS_KEY}}
+FILES_REGION            ${{pdo-files.REGION}}
+FILES_ENDPOINT          ${{pdo-files.ENDPOINT}}
+```
+
+Setting these leaves them *staged*: they do not reach the running app
+until the next deploy. Check `/api/files/status`, which does a
+`HeadBucket` against the live credentials, rather than assuming.
+
 Decisions worth keeping:
 
 - **Uploads and downloads both stream through the app**, not via

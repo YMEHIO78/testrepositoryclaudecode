@@ -145,6 +145,9 @@ System spec (a static reference page; nothing to wire up)
   service 24ed1c72-…"*. Pushing to GitHub alone does **not** reliably
   trigger a deploy.
 - **Builds take about 3 minutes.** Do not read slowness as failure.
+- **Variable changes are staged, not live.** They reach the app only on
+  the next deploy. Verify with `list-variables` that the name is on the
+  service before assuming an integration is wired.
 - **`get-logs` returns empty while a build is in progress.** This is not
   evidence of a hang — it misled twice in one session, once causing a
   redundant deploy. The Railway agent's own log search does return logs.
