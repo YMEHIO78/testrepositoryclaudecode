@@ -752,12 +752,12 @@ app.delete('/api/crm/contacts/:id', async (req, res) => {
 
 // --- Files ---
 
-// `folder` is tri-state: absent means every file in scope (what a client's
-// page wants), "root" means only files sitting outside any folder, and an
-// id means that folder's contents.
+// This endpoint always browses one level of the tree. Absent or "root"
+// means the top level, an id means inside that folder. Without a clientId
+// the top level is every client's — the "All clients" root is a real root,
+// not a separate flat mode.
 function folderFilter(value) {
-  if (value === undefined || value === '') return undefined;
-  if (value === 'root') return null;
+  if (!value || value === 'root') return null;
   return Number(value);
 }
 
@@ -775,9 +775,12 @@ app.get('/api/files', async (req, res) => {
         projectId: req.query.projectId ? Number(req.query.projectId) : null,
         folderId,
       }),
-      folders: folderId === undefined
-        ? []
-        : await folders.listFolders({ clientId: clientId || null, parentId: folderId }),
+      // undefined, not null: null would mean "folders belonging to no
+      // client", which is a much smaller set than "every client's".
+      folders: await folders.listFolders({
+        clientId: clientId || undefined,
+        parentId: folderId,
+      }),
       breadcrumb: folderId ? await folders.breadcrumb(folderId) : [],
       stats: await files.stats(),
     });

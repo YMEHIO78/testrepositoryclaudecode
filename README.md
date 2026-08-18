@@ -220,14 +220,18 @@ Decisions worth keeping:
 
 ### Folders
 
-The Files view has two modes, and the client selector switches between
-them:
+The Files view is a folder browser showing one level at a time, and the
+client selector narrows the scope rather than switching modes:
 
-- **All clients** — a flat list of every file. The "where did that go"
-  view. No folders are shown, because a folder belongs to a client and
-  showing every client's folders at once means nothing.
-- **A client selected** — a folder browser scoped to them, with a
-  breadcrumb. Files sitting outside any folder appear at the top level.
+- **All clients** — the top level is every client's folders at once, plus
+  any file not in a folder. Folder rows show which client they belong to.
+  This is what you want when you do not remember whose file it was.
+- **A client selected** — the same browser narrowed to that client.
+
+An earlier version made "All clients" a flat list of every file with no
+folders shown at all. It looked like the folders had vanished unless you
+first picked the right client, so it is now a real root. A smoke test
+covers it.
 
 You can create folders in the app, nest them up to ten deep, rename them,
 and upload straight into whichever one you're looking at. **Upload folder**

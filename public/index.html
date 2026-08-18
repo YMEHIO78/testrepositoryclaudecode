@@ -715,7 +715,7 @@
     <!-- ================= FILES ================= -->
     <div class="view hidden" id="view-files">
       <h1>Files</h1>
-      <p class="sub">Stored in this app's object storage and served through it, so every download stays behind the login. Pick a client to browse their folders; leave it on all clients for a flat list of everything.</p>
+      <p class="sub">Stored in this app's object storage and served through it, so every download stays behind the login. Browse folders here, or pick a client to narrow it to theirs.</p>
 
       <div class="stat-strip" id="filesStats"></div>
 
@@ -2211,10 +2211,10 @@
   wireDetailLinks(document.getElementById('ticketDetail'));
 
   // --- Files ---
-  // Two modes. With no client selected this is a flat list of everything,
-  // which is the "where did that file go" view. Pick a client and it
-  // becomes a folder browser scoped to them, because a folder belongs to
-  // a client and showing every client's folders at once means nothing.
+  // A folder browser, always showing one level. The client selector
+  // narrows the scope rather than switching modes: with none selected the
+  // top level is every client's folders at once, which is what you want
+  // when you do not remember whose file it was.
   let filesData = { configured: false, files: [], folders: [], breadcrumb: [], stats: {}, maxBytes: 0 };
   let filesFolderId = null;
   // Remembers the client the filter should land on when its option list is
@@ -2285,11 +2285,12 @@
     if (!rows) return;
     const clientId = filesClientId();
 
+    // Always browsing one level. With no client the top level is every
+    // client's folders at once, which is a real root rather than a
+    // separate flat mode.
     const params = new URLSearchParams();
-    if (clientId) {
-      params.set('clientId', clientId);
-      params.set('folder', filesFolderId ? String(filesFolderId) : 'root');
-    }
+    params.set('folder', filesFolderId ? String(filesFolderId) : 'root');
+    if (clientId) params.set('clientId', clientId);
 
     try {
       filesData = await (await fetch(`/api/files?${params}`)).json();
@@ -2344,7 +2345,7 @@
       <tr data-folder="${f.id}">
         <td><span class="name-cell">${FOLDER_ICON}<a data-open="${f.id}"><b>${escapeHtml(f.name)}</b></a></span>
           <div class="sub">Folder</div></td>
-        <td>—</td>
+        <td>${f.clientId ? `<a data-client="${f.clientId}">${escapeHtml(f.clientName || '—')}</a>` : '—'}</td>
         <td>—</td>
         <td class="num">—</td>
         <td>${escapeHtml(relativeDate(f.createdAt))}</td>
@@ -2367,7 +2368,7 @@
 
     if (!folderRows && !fileRows) {
       rows.innerHTML = `<tr><td colspan="6" class="msg-snippet">${filesData.configured
-        ? (filesClientId() ? 'Nothing in this folder yet.' : 'No files yet.')
+        ? (filesFolderId ? 'Nothing in this folder yet.' : 'Nothing here yet.')
         : 'Storage not configured.'}</td></tr>`;
       return;
     }
@@ -2376,10 +2377,11 @@
 
   function renderFilesCrumbs(){
     const el = document.getElementById('filesCrumbs');
-    if (!filesClientId()) { el.innerHTML = ''; return; }
-
     const trail = filesData.breadcrumb || [];
-    const parts = [`<a data-crumb="">All folders</a>`].concat(
+    const root = filesClientId() ? 'Top level' : 'All clients';
+    if (!trail.length) { el.innerHTML = `<b>${root}</b>`; return; }
+
+    const parts = [`<a data-crumb="">${root}</a>`].concat(
       trail.map((f, i) => (i === trail.length - 1
         ? `<b>${escapeHtml(f.name)}</b>`
         : `<a data-crumb="${f.id}">${escapeHtml(f.name)}</a>`)),
@@ -2401,11 +2403,9 @@
     loadFiles();
   });
 
-  document.getElementById('filesNewFolderBtn').addEventListener('click', () => {
-    const clientId = filesClientId();
-    if (!clientId) { showBanner('Pick a client first — folders belong to a client.', 'error'); return; }
-    openFolderDialog();
-  });
+  // No client requirement: a folder can belong to no client, exactly as a
+  // file can. Inside a folder it inherits that folder's client anyway.
+  document.getElementById('filesNewFolderBtn').addEventListener('click', () => openFolderDialog());
 
   function openFolderDialog(existing){
     const here = (filesData.breadcrumb || []).slice(-1)[0];
@@ -2415,7 +2415,7 @@
       body: `
         <label>Name</label>
         <input type="text" id="folderName" value="${existing ? escapeHtml(existing.name) : ''}" placeholder="2026 contracts">
-        ${existing ? '' : `<p class="msg-snippet" style="margin-top:var(--space-2);">Created inside <b>${here ? escapeHtml(here.name) : 'the client’s top level'}</b>.</p>`}`,
+        ${existing ? '' : `<p class="msg-snippet" style="margin-top:var(--space-2);">Created inside <b>${here ? escapeHtml(here.name) : 'the top level'}</b>.</p>`}`,
       actions: actionButtons(existing ? 'Rename' : 'Create'),
     });
 
@@ -2452,7 +2452,6 @@
 
   document.getElementById('filesUploadFolderBtn').addEventListener('click', () => {
     if (!filesData.configured) { showBanner('File storage is not configured.', 'error'); return; }
-    if (!filesClientId()) { showBanner('Pick a client first — an uploaded folder is filed under one.', 'error'); return; }
     document.getElementById('filesFolderInput').click();
   });
 

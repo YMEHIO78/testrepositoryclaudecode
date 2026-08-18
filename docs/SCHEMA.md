@@ -214,7 +214,7 @@ one touches nothing in storage.
 | Column | Notes |
 |---|---|
 | `name` | sanitised on the way in: control characters dropped, `/` and `\` become `-`, capped at 100 chars |
-| `client_id` | `ON DELETE CASCADE` — a client's folders go with them |
+| `client_id` | `ON DELETE CASCADE` — a client's folders go with them; nullable, so a folder can belong to no client just as a file can |
 | `parent_id` | self-reference, `ON DELETE SET NULL`; nesting capped at 10 by the application |
 
 A subfolder always inherits its parent's `client_id`, so a folder cannot

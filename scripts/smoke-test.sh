@@ -300,6 +300,15 @@ else
   echo "$INSIDE" | grep -q '"name":"Deep"' && ok "upload path created the subfolder" \
     || bad "path-based folder creation"
 
+  # With no client filter the top level must still list folders. It used
+  # to return files only, which made every folder look like it had
+  # vanished unless you first picked the right client.
+  ALLC=$(api "$BASE_URL/api/files")
+  echo "$ALLC" | grep -q '"name":"Contracts"' && ok "all-clients root lists folders too" \
+    || bad "all-clients root hid the folders" "$(echo "$ALLC" | head -c 150)"
+  echo "$ALLC" | grep -q '"clientName":"Smoke Folder Co"' \
+    && ok "folder rows carry their client name" || bad "folder client name missing"
+
   CRUMB=$(api "$BASE_URL/api/files?clientId=$CLFID&folder=$F2")
   echo "$CRUMB" | grep -q '"breadcrumb":\[{"id":'"$F1" && ok "breadcrumb starts at the top folder" \
     || bad "breadcrumb" "$(echo "$CRUMB" | head -c 150)"
