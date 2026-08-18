@@ -196,9 +196,10 @@ FILES_REGION            ${{pdo-files.REGION}}
 FILES_ENDPOINT          ${{pdo-files.ENDPOINT}}
 ```
 
-Setting these leaves them *staged*: they do not reach the running app
-until the next deploy. Check `/api/files/status`, which does a
-`HeadBucket` against the live credentials, rather than assuming.
+A new variable only reaches the running app on the next deploy. And do
+not trust Railway's `list-variables` API to tell you whether one is set —
+it omitted all five of these while they were live. Check
+`/api/files/status`, which does a `HeadBucket` with the real credentials.
 
 Decisions worth keeping:
 

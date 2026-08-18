@@ -66,12 +66,15 @@ Builds take **about three minutes**. `get-logs` returns an empty array
 while a build is in progress — that is not evidence of a hang. Wait for
 the status to change to SUCCESS before concluding anything.
 
-**Setting a variable does not apply it.** Railway stages variable changes
-and they only reach the running app on the next deploy, so a new
-integration can look wired up and still be missing at runtime. Confirm
-with `list-variables` that the name is actually on the service, then
-deploy. This bit the `FILES_*` bucket variables — they had been set once
-and were simply not there.
+**`list-variables` under-reports — do not trust it as evidence of absence.**
+It returned 23 names for this service and silently omitted all five
+`FILES_*` variables, which were present the whole time. That looked
+exactly like a broken integration and nearly caused a pointless re-wiring.
+To check whether a variable is really set, ask the Railway agent for the
+service config, or better, hit the app endpoint that actually uses it
+(`/api/files/status` does a `HeadBucket` with the live credentials).
+Separately, variable changes are staged and only reach the running app on
+the next deploy — so a genuinely new variable still needs one.
 
 ### Verifying
 
