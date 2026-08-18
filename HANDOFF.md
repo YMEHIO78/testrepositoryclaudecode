@@ -208,7 +208,7 @@ System spec (a static reference page; nothing to wire up)
 - Two routes were offered and neither was built yet, by choice: a manual
   "download a full JSON export" endpoint, and a scheduled off-site copy to
   a second S3-compatible provider (Backblaze B2 or Cloudflare R2 — the
-  same `-sdk/client-s3` code works against either). **Not built.**
+  same `@aws-sdk/client-s3` code works against either). **Not built.**
 
 **Feature gaps in what already works:**
 - Inbox: no forward. Attachments download; search and pagination work.
