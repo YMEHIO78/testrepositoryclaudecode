@@ -113,6 +113,27 @@ System spec (a static reference page; nothing to wire up)
   reference variables — no credentials pasted by hand. The price is no
   backup and no version history; see Outstanding work.
 
+- **Railway's volume backups are Pro-gated; this workspace is on Hobby.**
+  Creating, restoring, locking and scheduling a volume backup all return
+  "Not Authorized" below Pro — Trial, Free and Hobby all carry a backup
+  limit of zero, which is what `maxBackupsCount: 0` in the plan-limits API
+  means. *Listing* and *deleting* existing backups are not gated, so a
+  Hobby workspace can still see and remove any snapshots Railway created
+  on its own (pre-patch, pre-HA-conversion), but cannot restore them. On
+  Pro the limit becomes 10 backups per volume, with total backup storage
+  capped at 50% of the volume's size.
+- **Point-in-Time Recovery is probably Pro-only too, but this is inferred,
+  not confirmed.** Railway's PITR docs state no plan requirement; the
+  inference comes from PITR sharing the Pro-gated backup infrastructure.
+  If the answer matters for a decision, confirm it in a Railway Help
+  Station thread rather than trusting this note.
+- **Storage Buckets have no backups on any plan.** No versioning, no
+  object lock, no snapshots — this is a bucket-level gap, so upgrading to
+  Pro does not fix it. Only a copy to a second provider does.
+- **What that leaves on Hobby:** logical `pg_dump` backups against
+  `DATABASE_PUBLIC_URL`, and a copy of bucket objects to somewhere else.
+  Both have to be driven from outside Railway.
+
 ## Design decisions worth preserving
 
 - **Money is integer cents** throughout, entered as dollars in the UI.
