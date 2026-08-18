@@ -196,12 +196,19 @@ System spec (a static reference page; nothing to wire up)
 - Consider rotating `WAVE_TOKEN` — it grants access to *every* business on
   the Wave account (including "Personal") and cannot be scoped down.
 
-**Files have no backup — the biggest known hole:**
-- Railway Buckets have no automatic backups, no versioning and no object
-  lock. Deleting a file through the app is permanent and unrecoverable.
-- The intended fix is a scheduled copy to a second S3-compatible provider
-  (Backblaze B2 or Cloudflare R2 — the same `@aws-sdk/client-s3` code
-  works against either). **Not built.**
+**Nothing is backed up — the biggest known hole:**
+- **Files**: Railway Buckets have no backups, versioning or object lock on
+  any plan. Deleting a file through the app is permanent.
+- **Postgres**: Railway's volume backups are Pro-gated and this workspace
+  is on Hobby, so there are no database snapshots either. Every client,
+  ticket, project and person record has exactly one copy. See the settled
+  facts above for what the plan does and does not allow.
+- Mail is safe (it lives on Hostinger's IMAP server, not here) and the
+  code is on GitHub. Everything else is single-copy.
+- Two routes were offered and neither was built yet, by choice: a manual
+  "download a full JSON export" endpoint, and a scheduled off-site copy to
+  a second S3-compatible provider (Backblaze B2 or Cloudflare R2 — the
+  same `-sdk/client-s3` code works against either). **Not built.**
 
 **Feature gaps in what already works:**
 - Inbox: no forward. Attachments download; search and pagination work.
