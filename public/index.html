@@ -175,6 +175,12 @@
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
+  /* Group headings inside a table body. Not clickable and not a client,
+     so they get their own background and no pointer cursor - otherwise a
+     heading looks like a row you can open. */
+  tr.group-head td{background:var(--color-neutral-200);border-bottom:1px solid var(--line);padding-top:11px;padding-bottom:11px;}
+  tr.group-head .sub{display:inline;margin-left:8px;color:var(--muted);font-size:12px;}
+  tr.group-head .num{font-weight:600;}
   .stepper{display:inline-flex;align-items:center;gap:4px;flex:none;}
   .step-btn{font-family:inherit;font-size:16px;line-height:1;width:30px;height:30px;color:var(--ink);background:none;border:1px solid var(--line);border-radius:2px;cursor:pointer;}
   .step-btn:hover{background:var(--color-neutral-300);border-color:var(--brand);}
@@ -643,6 +649,10 @@
         <button type="button" class="btn" id="crmAdd">Add client</button>
         <select id="crmFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
           <option value="">All stages</option>
+        </select>
+        <select id="crmGroup" style="padding:6px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
+          <option value="">Flat list</option>
+          <option value="stage">Grouped by stage</option>
         </select>
         <span class="msg-snippet" id="crmSummary"></span>
       </div>
@@ -3758,22 +3768,52 @@
       return;
     }
 
-    rows.innerHTML = list.map(c => {
-      const meta = stageMeta(c.stage);
-      const primary = c.contacts.find(x => x.isPrimary) || c.contacts[0];
+    const grouped = document.getElementById('crmGroup').value === 'stage';
+    rows.innerHTML = grouped ? crmGroupedRows(list) : list.map(crmRow).join('');
+  }
+
+  function crmRow(c){
+    const meta = stageMeta(c.stage);
+    const primary = c.contacts.find(x => x.isPrimary) || c.contacts[0];
+    return `
+      <tr data-id="${c.id}" style="cursor:pointer;">
+        <td><b>${escapeHtml(c.name)}</b></td>
+        <td><span class="pill ${meta.tone}">${escapeHtml(meta.label)}</span></td>
+        <td>${primary ? escapeHtml(primary.name) : '—'}</td>
+        <td>${c.contacts.length || '—'}</td>
+        <td class="num">${escapeHtml(money(c.valueCents, c.recurring))}</td>
+        <td>${escapeHtml(relativeDate(c.lastTouchAt))}</td>
+      </tr>`;
+  }
+
+  // Groups run in pipeline order — coldest to won, then lost — because
+  // that is the order the stages mean something in, not alphabetical.
+  // Clients inside a group are alphabetical, case-insensitively, so
+  // "acme" and "Acme Holdings" sit together rather than in separate runs
+  // of upper and lower case.
+  //
+  // Only stages that actually have someone in them get a heading. An
+  // empty "Offer sent" row would be a heading with nothing under it.
+  function crmGroupedRows(list){
+    return crmData.stages.map(stage => {
+      const inStage = list
+        .filter(c => c.stage === stage.key)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      if (!inStage.length) return '';
+
+      const value = inStage.reduce((sum, c) => sum + (c.valueCents || 0), 0);
       return `
-        <tr data-id="${c.id}" style="cursor:pointer;">
-          <td><b>${escapeHtml(c.name)}</b></td>
-          <td><span class="pill ${meta.tone}">${escapeHtml(meta.label)}</span></td>
-          <td>${primary ? escapeHtml(primary.name) : '—'}</td>
-          <td>${c.contacts.length || '—'}</td>
-          <td class="num">${escapeHtml(money(c.valueCents, c.recurring))}</td>
-          <td>${escapeHtml(relativeDate(c.lastTouchAt))}</td>
-        </tr>`;
+        <tr class="group-head">
+          <td colspan="4"><span class="pill ${stage.tone}">${escapeHtml(stage.label)}</span>
+            <span class="sub">${inStage.length}</span></td>
+          <td class="num">${escapeHtml(money(value, false))}</td>
+          <td></td>
+        </tr>` + inStage.map(crmRow).join('');
     }).join('');
   }
 
   document.getElementById('crmFilter').addEventListener('change', renderCrm);
+  document.getElementById('crmGroup').addEventListener('change', renderCrm);
   document.getElementById('crmAdd').addEventListener('click', () => openClientEditor(null));
   document.getElementById('crmRows').addEventListener('click', (e) => {
     const tr = e.target.closest('tr[data-id]');
