@@ -230,8 +230,35 @@ If these files start mattering, the fix is a scheduled copy to a second
 provider (Backblaze B2 or Cloudflare R2 — both S3-compatible, so the same
 client code works). That job is **not built yet**.
 
-Storage is billed at $0.015/GB-month with free egress and free API
-operations, so the cost of keeping a second copy is negligible.
+Storage is cheap enough that keeping a second copy is a rounding error;
+see the cost breakdown below.
+
+### What it costs
+
+Storage is **$0.015 per GB-month**, and a fractional total rounds *up* to
+the next whole GB-month — 5.1 GB-month bills as 6. So any stored bytes at
+all cost at least $0.015/month. All S3 API operations are free and
+unlimited, and so is egress *from the bucket*.
+
+Egress *from a service* is not free — it is $0.05/GB — and that is worth
+understanding given the proxy design above. Buckets are not on Railway's
+private network, so:
+
+- **Upload**: browser → app → bucket. The app-to-bucket leg is service
+  egress, billed.
+- **Download**: bucket → app is free (bucket egress), but app → browser
+  is service egress, billed.
+
+Presigned URLs would avoid both legs. That is the price of keeping every
+byte behind the login, and at this app's volumes it is a rounding error —
+a gigabyte moved in each direction costs about a dime. It would stop being
+a rounding error if files were ever served at scale to the public, which
+is not what this is for.
+
+Plan limits: the Free plan allows 10 GB-month and counts bucket usage
+against the $1 monthly credit — if that credit runs out, **bucket access
+is suspended and files become unavailable** until the next cycle (they are
+not deleted). Hobby caps combined storage at 1 TB; Pro is unlimited.
 
 ## Detail pages
 

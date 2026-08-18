@@ -2194,7 +2194,11 @@
   function renderFiles(){
     const rows = document.getElementById('filesRows');
     const s = filesData.stats || {};
-    const monthly = (((s.bytes || 0) / 1073741824) * 0.015).toFixed(2);
+    // Railway rounds a fractional GB-month up to the next whole GB, so
+    // any stored bytes at all cost a full $0.015 - not a proportional
+    // fraction of it. Showing the proportional figure would read $0.00.
+    const gb = (s.bytes || 0) / 1073741824;
+    const monthly = (Math.ceil(gb) * 0.015).toFixed(2);
 
     document.getElementById('filesStats').innerHTML = `
       <div class="stat-cell">
