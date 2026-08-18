@@ -103,6 +103,17 @@ Actions right-aligned; destructive action pushed left with `margin-right:auto`.
   obvious the record is owned elsewhere.
 - **HTML email renders inside a `sandbox` iframe.** Never inject mail
   HTML into the page.
+- **Nav badges show a real count or nothing at all.** A zero renders
+  empty, and a badge stays empty until its data has loaded — a blank
+  badge is honest about not knowing, a number is not. They come from the
+  same sources the views use: mailbox-wide `UNSEEN` summed across
+  accounts, non-lost clients, and the server's open-ticket stat.
+
+  These three were hardcoded mockup values (`3`, `14`, `5`) that survived
+  every module built on top of them, because nothing ever read them and
+  so nothing ever contradicted them. Worth remembering when you find a
+  number in the markup: if no code writes to it, assume it is a leftover
+  until proven otherwise.
 
 ## Not built from the reference
 

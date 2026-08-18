@@ -457,16 +457,16 @@
     <div class="nav-group">
       <div class="nav-label">Overview</div>
       <button class="nav-btn active" data-view="dash">Dashboard</button>
-      <button class="nav-btn" data-view="inbox">Inbox <span class="nav-badge">3</span></button>
+      <button class="nav-btn" data-view="inbox">Inbox <span class="nav-badge" id="navBadgeInbox"></span></button>
       <button class="nav-btn" data-view="calendar">Calendar</button>
       <button class="nav-btn" data-view="scheduling">Scheduling</button>
     </div>
 
     <div class="nav-group">
       <div class="nav-label">Clients</div>
-      <button class="nav-btn" data-view="crm">Clients &amp; Leads <span class="nav-badge">14</span></button>
+      <button class="nav-btn" data-view="crm">Clients &amp; Leads <span class="nav-badge" id="navBadgeCrm"></span></button>
       <button class="nav-btn" data-view="projects">Projects</button>
-      <button class="nav-btn" data-view="tickets">Service Desk <span class="nav-badge">5</span></button>
+      <button class="nav-btn" data-view="tickets">Service Desk <span class="nav-badge" id="navBadgeTickets"></span></button>
       <button class="nav-btn" data-view="files">Files &amp; Folders</button>
     </div>
 
@@ -1218,7 +1218,40 @@
   // Composed from state the other views already loaded rather than its own
   // endpoint, so opening the app doesn't trigger a second round of IMAP and
   // API calls. Each loader calls renderDashboard() when its data lands.
+  // Nav badges. These were hardcoded mockup numbers - 3, 14, 5 - that no
+  // code ever updated, which put a fabricated figure in the most
+  // authoritative spot in the UI. They now read from the same sources the
+  // views themselves use.
+  //
+  // A zero renders as empty rather than "0", and nothing renders before
+  // its data has loaded: a blank badge is honest about not knowing, a
+  // number is not.
+  function renderNavBadges(){
+    const set = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value || '';
+    };
+
+    // Mailbox-wide UNSEEN summed across every connected account - the
+    // same figure the inbox's "All mail" tab shows. Not "unread among
+    // what happens to be loaded", which paging or a search would change.
+    set('navBadgeInbox', Object.values(inboxData.counts || {})
+      .reduce((s, c) => s + (c.unseen || 0), 0));
+
+    // Everything still in play. Lost is excluded - a count in the nav
+    // reads as "these want attention", and a lost lead does not.
+    set('navBadgeCrm', (crmData.clients || []).filter(c => c.stage !== 'lost').length);
+
+    // Server-computed, so the view's own open/all filter cannot move it.
+    set('navBadgeTickets', tkData.stats?.open ?? 0);
+  }
+
   function renderDashboard(){
+    // Rides along here because the three loaders that feed these badges -
+    // mail, clients, tickets - already refresh the dashboard on every
+    // change. One hook rather than three that can drift apart.
+    renderNavBadges();
+
     const greetEl = document.getElementById('dashGreeting');
     if (!greetEl) return;
 
