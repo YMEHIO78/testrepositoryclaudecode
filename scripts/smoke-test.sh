@@ -617,6 +617,18 @@ done
 
 FIN=$(api "$BASE_URL/api/finance")
 echo "$FIN" | grep -q '"connected"' && ok "finance endpoint responds" || bad "finance endpoint"
+  # Expenses ride along with the finance payload. Wave may legitimately
+  # have no expense accounts in use, so the assertion is on the shape
+  # being present, not on there being rows.
+  FIN=$(api "$BASE_URL/api/finance")
+  if echo "$FIN" | grep -q '"connected":true'; then
+    echo "$FIN" | grep -q '"expenses"' && ok "finance payload carries expenses" || bad "expenses key missing"
+    echo "$FIN" | grep -q '"expensesError":null' \
+      && ok "the expense query succeeded against Wave" \
+      || bad "expense query errored" "$(echo "$FIN" | grep -o '"expensesError":"[^"]*"' | head -c 200)"
+  else
+    ok "Wave not connected — expense checks skipped"
+  fi
 
 # ---------------------------------------------------------- summary
 

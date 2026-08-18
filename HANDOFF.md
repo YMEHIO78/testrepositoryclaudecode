@@ -102,7 +102,17 @@ System spec (a static reference page; nothing to wire up)
   through GraphQL variables; and `businesses` is a **root** field, not a
   field on `User` (`User` exposes only `id`, `defaultEmail`, names).
   `Money.minorUnitValue` is already in cents, matching the app's
-  convention everywhere.
+  convention everywhere - but `Account.balance` is a `Decimal` in MAJOR
+  units, so the two need opposite handling. Reading a balance as cents is
+  wrong by a factor of a hundred.
+- **Wave cannot read expenses, only write them.** Confirmed by
+  introspection, not assumed: `Business` has no transactions field, the
+  root `Query` has no transaction entry point, and the `Transaction` type
+  exposes only `id`. The only money-transaction operations in the schema
+  are the `moneyTransactionCreate` mutations. What *is* readable is
+  `Business.accounts(types: [EXPENSE])` with each account's balance, which
+  is what the Finance page shows. A dated expense list is not buildable
+  against this API by anyone - do not go looking for it again.
 
 - **File storage landed on Railway Buckets, and the alternatives were
   checked, not guessed.** There is **no `pocketdataoffice.com` OneDrive** —
@@ -223,7 +233,9 @@ System spec (a static reference page; nothing to wire up)
   work. No labels or folders beyond the inbox itself.
 - Unread counts come from IMAP `STATUS (UNSEEN)`, so they are true
   mailbox-wide totals.
-- Wave: invoices only; expenses are not pulled.
+- Wave: invoices, plus expense account balances. Per-expense detail
+  (dates, vendors, line items) is impossible - the API is write-only for
+  money transactions. See the settled facts above.
 - Files: folders, folder upload, per-client browsing and moving a file
   between folders all work. Still missing: per-file preview and
   drag-and-drop onto the page.

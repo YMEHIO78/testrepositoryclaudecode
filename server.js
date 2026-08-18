@@ -1319,12 +1319,25 @@ app.get('/api/finance', async (req, res) => {
   try {
     const result = await wave.fetchInvoices({ pageSize: 100 });
     if (!result) return res.json({ connected: false });
+
+    // Expenses degrade on their own: a Wave hiccup on the accounts query
+    // should not take the invoice list down with it.
+    let expenses = null;
+    let expensesError = null;
+    try {
+      expenses = await wave.fetchExpenses({ pageSize: 100 });
+    } catch (err) {
+      expensesError = err.message;
+    }
+
     res.json({
       connected: true,
       businessName: result.businessName,
       totalCount: result.totalCount,
       invoices: result.invoices,
       summary: wave.summarise(result.invoices),
+      expenses,
+      expensesError,
     });
   } catch (err) {
     console.error('Failed to load Wave invoices:', err.message);

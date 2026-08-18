@@ -179,6 +179,8 @@
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
+  /* Totals row at the foot of a table. */
+  tr.total-row td{background:var(--color-neutral-200);border-bottom:0;}
   /* Pipeline board — the reference's grouped view. Columns are stages,
      cards are clients. auto-fit rather than a fixed five, because the
      stage list is data and the stage filter can narrow it to one. */
@@ -896,7 +898,15 @@
         </table>
       </div>
 
-      <div class="note" id="finNote">Expenses aren't pulled yet — only invoices. Connect or manage the Wave link under <a href="#" data-goto="integrations">Integrations</a>.</div>
+      <h2 style="font-size:15px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;margin:34px 0 10px;">Expenses by account</h2>
+      <div class="card">
+        <table>
+          <thead><tr><th>Account</th><th>Category</th><th class="num">Booked to date</th></tr></thead>
+          <tbody id="finExpenseRows"><tr><td colspan="3" class="msg-snippet">Loading…</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="note" id="finNote">Connect or manage the Wave link under <a href="#" data-goto="integrations">Integrations</a>.</div>
     </div>
 
     <!-- ================= PEOPLE ================= -->
@@ -1339,6 +1349,52 @@
           <td class="num">${i.dueCents ? escapeHtml(money(i.dueCents, false)) : '—'}</td>
         </tr>`).join('')
       : '<tr><td colspan="7" class="msg-snippet">No invoices in Wave yet.</td></tr>';
+
+    renderExpenses();
+  }
+
+  // Expenses are account balances, not a transaction feed. Wave's API has
+  // no way to read individual money transactions — only to create them —
+  // so this is the whole of what exists, and the note says so rather than
+  // implying a missing feature.
+  function renderExpenses(){
+    const rows = document.getElementById('finExpenseRows');
+    const note = document.getElementById('finNote');
+    if (!rows) return;
+
+    const wrapUp = (extra) => {
+      note.innerHTML = `${extra} Connect or manage the Wave link under <a href="#" data-goto="integrations">Integrations</a>.`;
+    };
+
+    if (finData.expensesError) {
+      rows.innerHTML = `<tr><td colspan="3" class="msg-snippet" style="color:var(--red);">${escapeHtml(finData.expensesError)}</td></tr>`;
+      wrapUp('Invoices loaded but expenses did not.');
+      return;
+    }
+
+    const e = finData.expenses;
+    if (!e || !e.accounts?.length) {
+      rows.innerHTML = '<tr><td colspan="3" class="msg-snippet">Nothing booked to an expense account yet.</td></tr>';
+      wrapUp('');
+      return;
+    }
+
+    rows.innerHTML = e.accounts.map(a => `
+      <tr>
+        <td><b>${escapeHtml(a.name)}</b>${a.description ? `<div class="sub">${escapeHtml(a.description)}</div>` : ''}</td>
+        <td>${escapeHtml(a.subtype || '—')}</td>
+        <td class="num">${escapeHtml(money(a.balanceCents, false))}</td>
+      </tr>`).join('')
+      + `<tr class="total-row">
+          <td colspan="2"><b>Total</b></td>
+          <td class="num"><b>${escapeHtml(money(e.totalCents, false))}</b></td>
+        </tr>`;
+
+    wrapUp('<b>These are account balances to date, not a dated expense list.</b> '
+      + 'Wave\'s API can create a money transaction but cannot read one back, so '
+      + 'per-expense detail — dates, vendors, line items — is not available to any '
+      + 'app through it. There is also no profit figure here for the same reason: '
+      + 'balances to date cannot be netted against a page of recent invoices.');
   }
 
   document.getElementById('finRefresh')?.addEventListener('click', loadFinance);
