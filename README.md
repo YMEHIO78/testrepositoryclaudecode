@@ -255,10 +255,17 @@ a gigabyte moved in each direction costs about a dime. It would stop being
 a rounding error if files were ever served at scale to the public, which
 is not what this is for.
 
-Plan limits: the Free plan allows 10 GB-month and counts bucket usage
-against the $1 monthly credit — if that credit runs out, **bucket access
-is suspended and files become unavailable** until the next cycle (they are
-not deleted). Hobby caps combined storage at 1 TB; Pro is unlimited.
+Plan limits: this workspace is on **Hobby**, whose enforced ceiling is
+**50 GB of bucket storage across the workspace** and 3 buckets per
+project. (The public docs page says Hobby allows 1 TB; the API reports 50
+GB as the actual enforced limit for this account. Trust the API.) At the
+ceiling the bucket could cost at most $0.75/month, and Hobby already
+includes $5/month of usage, so realistically this line never shows up.
+
+If the account is ever downgraded to Free, note that bucket usage counts
+against the $1 monthly credit and **access is suspended when that runs
+out** — files become unreadable until the next cycle, though they are not
+deleted.
 
 ## Detail pages
 
