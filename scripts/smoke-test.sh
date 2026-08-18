@@ -172,6 +172,42 @@ else
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$CLID"
 fi
 
+# -------------------------------------------------------- projects
+
+head_ "Projects"
+
+PJ=$(api -X POST "$BASE_URL/api/projects" -H 'Content-Type: application/json' \
+  -d '{"name":"smoke-test project","stage":"build","budgetCents":200000,"spentCents":50000}')
+PJID=$(echo "$PJ" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+if [ -z "$PJID" ]; then
+  bad "could not create project" "$PJ"
+else
+  ok "project created"
+
+  api -o /dev/null -X POST "$BASE_URL/api/projects/$PJID/tasks" \
+    -H 'Content-Type: application/json' -d '{"title":"smoke task","status":"todo"}'
+
+  # A dated pending milestone must appear on the calendar.
+  api -o /dev/null -X POST "$BASE_URL/api/projects/$PJID/milestones" \
+    -H 'Content-Type: application/json' -d '{"name":"smoke milestone","dueOn":"2030-03-01"}'
+
+  DET=$(api "$BASE_URL/api/projects/$PJID/detail")
+  echo "$DET" | grep -q '"tasks"'      && ok "project detail includes the board" || bad "project detail tasks"
+  echo "$DET" | grep -q 'smoke task'   && ok "task saved to the board"           || bad "task not saved"
+  echo "$DET" | grep -q '"milestones"' && ok "project detail includes milestones"|| bad "project detail milestones"
+
+  api "$BASE_URL/api/calendar/events?from=2030-02-01T00:00:00Z&to=2030-04-01T00:00:00Z" \
+    | grep -q "smoke milestone" && ok "milestone projected onto the calendar" || bad "milestone projection"
+
+  # Deleting the project must take its calendar entries with it.
+  api -o /dev/null -X DELETE "$BASE_URL/api/projects/$PJID"
+  api "$BASE_URL/api/calendar/events?from=2030-02-01T00:00:00Z&to=2030-04-01T00:00:00Z" \
+    | grep -q "smoke milestone" \
+    && bad "deleted project left its milestone on the calendar" \
+    || ok "deleting a project clears its calendar entries"
+fi
+
 # ------------------------------------------------------------ mail
 
 head_ "Mail"

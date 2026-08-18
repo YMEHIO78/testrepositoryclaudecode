@@ -250,6 +250,26 @@
     color:var(--color-accent);font-weight:600;padding-top:2px;}
   .log-when{margin-left:auto;flex:none;font-size:12px;color:var(--color-neutral-500);}
 
+  /* Project kanban */
+  .board{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:start;}
+  @media (max-width:900px){ .board{grid-template-columns:1fr 1fr;} }
+  .board-col{background:var(--color-neutral-200);border:1px solid var(--color-divider);
+    border-radius:var(--radius-lg);padding:10px;min-height:120px;}
+  .board-col.dragover{border-color:var(--color-accent);background:var(--color-accent-100);}
+  .board-col h3{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--color-neutral-600);
+    font-weight:600;margin:0 0 8px;display:flex;justify-content:space-between;}
+  .board-card{background:var(--panel);border:1px solid var(--color-divider);border-radius:var(--radius-md);
+    padding:8px 10px;margin-bottom:8px;font-size:13px;cursor:grab;}
+  .board-card:hover{border-color:var(--color-accent);}
+  .board-card.dragging{opacity:.45;}
+  .board-card .who{font-size:11.5px;color:var(--color-neutral-600);margin-top:3px;}
+  .board-add{width:100%;border:1px dashed var(--color-divider);background:none;border-radius:var(--radius-md);
+    padding:6px;font-family:inherit;font-size:12px;color:var(--color-neutral-600);cursor:pointer;}
+  .board-add:hover{border-color:var(--color-accent);color:var(--color-accent);}
+  .budget-bar{height:8px;background:var(--color-neutral-200);border-radius:var(--radius-sm);overflow:hidden;margin-top:4px;}
+  .budget-bar span{display:block;height:100%;background:var(--color-accent);}
+  .budget-bar span.over{background:var(--color-accent-2);}
+
   /* Inbox master-detail, per the reference layout */
   .inbox-view{display:flex;align-items:stretch;min-height:0;flex:1;padding:0;max-width:none;}
   .inbox-list{width:380px;flex:none;border-right:1px solid var(--color-divider);display:flex;flex-direction:column;min-height:0;}
@@ -620,18 +640,34 @@
     <!-- ================= PROJECTS ================= -->
     <div class="view hidden" id="view-projects">
       <h1>Projects</h1>
-      <p class="sub">One project per package sold. Budget and spend roll up from time logged by contractors and rebilled expenses.</p>
+      <p class="sub">One project per package sold, hanging off a client. Milestone dates appear on the calendar.</p>
+
+      <div class="stat-strip" id="projStats"></div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin:18px 0 12px;flex-wrap:wrap;">
+        <button type="button" class="btn" id="projAdd">New project</button>
+        <select id="projFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
+          <option value="open">Active only</option>
+          <option value="">All projects</option>
+        </select>
+      </div>
+
       <div class="card">
         <table>
-          <thead><tr><th>Project</th><th>Client</th><th>Stage</th><th>Owner</th><th>Due</th><th>Budget used</th></tr></thead>
-          <tbody>
-            <tr><td>Warehouse refresh fix</td><td>Hatcher &amp; Co.</td><td><span class="pill red">Blocked</span></td><td>Yosef</td><td>13 Aug</td><td class="num">$1,120 / $2,000</td></tr>
-            <tr><td>Phase 2 — manual data batch</td><td>Ridgeline Dental</td><td><span class="pill amber">Build</span></td><td>Yosef</td><td>22 Aug</td><td class="num">$900 / $2,600</td></tr>
-            <tr><td>Analysis package — Q3</td><td>Marlowe Clinic</td><td><span class="pill grey">Scoping</span></td><td>Yosef</td><td>1 Sep</td><td class="num">$0 / $3,100</td></tr>
-          </tbody>
+          <thead><tr><th>Project</th><th>Client</th><th>Stage</th><th>Health</th><th>Owner</th><th>Due</th><th>Budget used</th></tr></thead>
+          <tbody id="projRows"><tr><td colspan="7" class="msg-snippet">Loading…</td></tr></tbody>
         </table>
       </div>
+
+      <div class="note">Spend is entered by hand — there's no time tracking or expense feed to derive it from, and a derived figure would be invented.</div>
     </div>
+
+    <!-- ================= PROJECT DETAIL ================= -->
+    <div class="view hidden" id="view-project">
+      <a href="#" class="crumb-back" data-goto="projects">← Projects</a>
+      <div id="projectDetail"><p class="msg-snippet">Loading…</p></div>
+    </div>
+
 
     <!-- ================= TICKETS ================= -->
     <div class="view hidden" id="view-tickets">
@@ -2114,6 +2150,468 @@
   wireDetailLinks(document.getElementById('clientDetail'));
   wireDetailLinks(document.getElementById('ticketDetail'));
 
+  // --- Projects ---
+  let projData = { stages: [], health: [], taskStatuses: [], milestoneStatuses: [], projects: [], stats: {} };
+  let projDetail = null;
+
+  function projMeta(list, key){
+    return (list || []).find(x => x.key === key) || { label: key, tone: 'grey' };
+  }
+
+  function budgetBar(spent, budget){
+    if (!budget) return '<span class="sub">no budget set</span>';
+    const pct = Math.min(100, Math.round((spent / budget) * 100));
+    const over = spent > budget;
+    return `${escapeHtml(money(spent, false))} / ${escapeHtml(money(budget, false))}
+      <div class="budget-bar"><span class="${over ? 'over' : ''}" style="width:${pct}%;"></span></div>`;
+  }
+
+  async function loadProjects(){
+    const rows = document.getElementById('projRows');
+    if (!rows) return;
+    const openOnly = document.getElementById('projFilter').value === 'open';
+    try {
+      projData = await (await fetch(`/api/projects${openOnly ? '?open=1' : ''}`)).json();
+    } catch (err) {
+      rows.innerHTML = '<tr><td colspan="7" class="msg-snippet">Could not load projects.</td></tr>';
+      return;
+    }
+    renderProjects();
+  }
+
+  function renderProjects(){
+    const rows = document.getElementById('projRows');
+    const s = projData.stats || {};
+    document.getElementById('projStats').innerHTML = `
+      <div class="stat-cell">
+        <span class="label">Active projects</span>
+        <span class="value accent">${s.active ?? 0}</span>
+        <span class="note">${s.needsAttention ?? 0} not on track</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Active budget</span>
+        <span class="value small">${escapeHtml(money(s.activeBudgetCents ?? 0, false))}</span>
+        <span class="note">across live projects</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Total</span>
+        <span class="value small">${projData.projects.length}</span>
+        <span class="note">shown</span>
+      </div>`;
+
+    if (!projData.projects.length) {
+      rows.innerHTML = '<tr><td colspan="7" class="msg-snippet">No projects yet.</td></tr>';
+      return;
+    }
+
+    rows.innerHTML = projData.projects.map(p => {
+      const st = projMeta(projData.stages, p.stage);
+      const h = projMeta(projData.health, p.health);
+      return `
+        <tr data-id="${p.id}" style="cursor:pointer;">
+          <td><b>${escapeHtml(p.name)}</b>${p.openTasks ? ` <span class="sub">· ${p.openTasks} open</span>` : ''}</td>
+          <td>${escapeHtml(p.clientName || '—')}</td>
+          <td><span class="pill ${st.tone}">${escapeHtml(st.label)}</span></td>
+          <td><span class="pill ${h.tone}">${escapeHtml(h.label)}</span></td>
+          <td>${escapeHtml(p.owner || '—')}</td>
+          <td>${escapeHtml(p.dueOn || '—')}</td>
+          <td class="num">${budgetBar(p.spentCents, p.budgetCents)}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('projFilter').addEventListener('change', loadProjects);
+  document.getElementById('projAdd').addEventListener('click', () => openProjectEditor(null));
+  document.getElementById('projRows').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]');
+    if (tr) openProjectDetail(Number(tr.dataset.id));
+  });
+
+  function openProjectEditor(project, onSaved){
+    const isEdit = !!project;
+    const dollars = project?.budgetCents != null ? (project.budgetCents / 100) : '';
+    const spent = project?.spentCents ? (project.spentCents / 100) : '';
+
+    const modal = openModal({
+      kicker: 'Projects',
+      title: isEdit ? 'Edit project' : 'New project',
+      body: `
+        <label>Name</label>
+        <input type="text" id="prName" value="${escapeHtml(project?.name || '')}" placeholder="Phase 2 — manual data batch">
+        <div class="cols">
+          <div>
+            <label>Client</label>
+            <select id="prClient">
+              <option value="">— none —</option>
+              ${crmData.clients.map(c => `<option value="${c.id}" ${project?.clientId === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label>Owner</label>
+            <input type="text" id="prOwner" value="${escapeHtml(project?.owner || '')}" placeholder="Who's running it">
+          </div>
+        </div>
+        <div class="cols">
+          <div>
+            <label>Stage</label>
+            <select id="prStage">
+              ${projData.stages.map(s => `<option value="${s.key}" ${project?.stage === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label>Health</label>
+            <select id="prHealth">
+              ${projData.health.map(h => `<option value="${h.key}" ${project?.health === h.key ? 'selected' : ''}>${escapeHtml(h.label)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="cols">
+          <div><label>Budget (USD)</label><input type="number" id="prBudget" value="${dollars}" min="0" step="50"></div>
+          <div><label>Spent (USD)</label><input type="number" id="prSpent" value="${spent}" min="0" step="50"></div>
+        </div>
+        <div class="cols">
+          <div><label>Starts</label><input type="date" id="prStart" value="${escapeHtml(project?.startsOn || '')}"></div>
+          <div><label>Due</label><input type="date" id="prDue" value="${escapeHtml(project?.dueOn || '')}"></div>
+        </div>
+        <label>Notes</label>
+        <textarea id="prNotes">${escapeHtml(project?.notes || '')}</textarea>`,
+      actions: actionButtons(isEdit ? 'Save changes' : 'Create project', { destructive: isEdit ? 'Delete' : null }),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const name = document.getElementById('prName').value.trim();
+      if (!name) { modalStatus('Give it a name.'); return; }
+      const b = document.getElementById('prBudget').value;
+      const sp = document.getElementById('prSpent').value;
+      const clientRaw = document.getElementById('prClient').value;
+
+      modalStatus('Saving…');
+      try {
+        const res = await fetch(isEdit ? `/api/projects/${project.id}` : '/api/projects', {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            clientId: clientRaw ? Number(clientRaw) : null,
+            owner: document.getElementById('prOwner').value.trim() || null,
+            stage: document.getElementById('prStage').value,
+            health: document.getElementById('prHealth').value,
+            budgetCents: b === '' ? null : Math.round(Number(b) * 100),
+            spentCents: sp === '' ? 0 : Math.round(Number(sp) * 100),
+            startsOn: document.getElementById('prStart').value || null,
+            dueOn: document.getElementById('prDue').value || null,
+            notes: document.getElementById('prNotes').value.trim() || null,
+          }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Could not save.');
+        closeModal();
+        loadProjects();
+        loadCalendar();
+        if (onSaved) onSaved();
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
+
+    const del = modal.querySelector('[data-modal="delete"]');
+    if (del) del.onclick = async () => {
+      if (!confirm(`Delete "${project.name}"? Its tasks, milestones and their calendar entries go too.`)) return;
+      await fetch(`/api/projects/${project.id}`, { method: 'DELETE' });
+      closeModal();
+      loadProjects();
+      loadCalendar();
+      if (onSaved) goto('projects');
+    };
+  }
+
+  async function openProjectDetail(id){
+    goto('project');
+    const wrap = document.getElementById('projectDetail');
+    wrap.innerHTML = '<p class="msg-snippet">Loading…</p>';
+
+    try {
+      const res = await fetch(`/api/projects/${id}/detail`);
+      projDetail = await res.json();
+      if (!res.ok) throw new Error(projDetail.error || 'Could not load.');
+    } catch (err) {
+      wrap.innerHTML = `<p class="msg-snippet" style="color:var(--red);">${escapeHtml(err.message)}</p>`;
+      return;
+    }
+    renderProjectDetail();
+  }
+
+  function renderProjectDetail(){
+    const wrap = document.getElementById('projectDetail');
+    const d = projDetail;
+    const p = d.project;
+    const st = projMeta(projData.stages, p.stage);
+    const h = projMeta(projData.health, p.health);
+
+    const byStatus = {};
+    for (const t of d.tasks) (byStatus[t.status] = byStatus[t.status] || []).push(t);
+
+    wrap.innerHTML = `
+      <div class="detail-head">
+        <h1>${escapeHtml(p.name)}</h1>
+        <div class="detail-meta">
+          <span class="pill ${st.tone}">${escapeHtml(st.label)}</span>
+          <span class="pill ${h.tone}">${escapeHtml(h.label)}</span>
+          ${p.clientName ? `<span><a data-client="${p.clientId}">${escapeHtml(p.clientName)}</a></span>` : ''}
+          ${p.dueOn ? `<span>Due ${escapeHtml(p.dueOn)}</span>` : ''}
+          <button type="button" class="btn ghost" id="pdEdit" style="margin-left:auto;">Edit</button>
+        </div>
+      </div>
+
+      ${(d.warnings || []).map(w => `<p class="detail-warn">${escapeHtml(w)}</p>`).join('')}
+
+      <div class="detail-section">
+        <h2>Board</h2>
+        <div class="board" id="projBoard">
+          ${projData.taskStatuses.map(col => `
+            <div class="board-col" data-status="${col.key}">
+              <h3><span>${escapeHtml(col.label)}</span><span>${(byStatus[col.key] || []).length}</span></h3>
+              ${(byStatus[col.key] || []).map(t => `
+                <div class="board-card" draggable="true" data-task="${t.id}">
+                  ${escapeHtml(t.title)}
+                  ${t.assignee ? `<div class="who">${escapeHtml(t.assignee)}</div>` : ''}
+                </div>`).join('')}
+              <button type="button" class="board-add" data-add="${col.key}">+ add</button>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <div class="detail-cols">
+        <div>
+          <div class="detail-section">
+            <h2>Milestones</h2>
+            <div id="projMilestones">
+              ${d.milestones.length ? d.milestones.map(m => {
+                const ms = projMeta(projData.milestoneStatuses, m.status);
+                return `
+                <div class="detail-row">
+                  <span><b>${escapeHtml(m.name)}</b>
+                    <div class="sub">${escapeHtml(m.dueOn || 'no date')} · ${escapeHtml(ms.label)}</div></span>
+                  <span style="display:flex;gap:6px;">
+                    <button type="button" class="int-btn disconnected" data-ms-edit="${m.id}">Edit</button>
+                    <button type="button" class="int-btn connected" data-ms-del="${m.id}">Remove</button>
+                  </span>
+                </div>`;
+              }).join('') : '<p class="detail-empty">No milestones yet.</p>'}
+            </div>
+            <button type="button" class="btn ghost" id="pdAddMs" style="margin-top:10px;">Add milestone</button>
+            <p class="detail-empty">Dated, pending milestones on a live project appear on the calendar.</p>
+          </div>
+
+          <div class="detail-section">
+            <h2>Client tickets</h2>
+            ${d.tickets.length ? d.tickets.map(t => `
+              <div class="detail-row">
+                <span><a data-ticket="${t.id}"><b>${escapeHtml(t.reference)}</b></a> ${escapeHtml(t.subject)}
+                  <div class="sub">${escapeHtml(tkMeta(tkData.statuses, t.status).label)}</div></span>
+              </div>`).join('')
+              : `<p class="detail-empty">${p.clientId ? 'No tickets for this client.' : 'Link a client to see their tickets.'}</p>`}
+          </div>
+        </div>
+
+        <div>
+          <div class="detail-section">
+            <h2>Budget</h2>
+            <div class="detail-row"><span>Spent</span><span>${escapeHtml(money(p.spentCents, false))}</span></div>
+            <div class="detail-row"><span>Budget</span><span>${p.budgetCents ? escapeHtml(money(p.budgetCents, false)) : '—'}</span></div>
+            ${p.budgetCents ? `<div style="padding-top:8px;">${budgetBar(p.spentCents, p.budgetCents)}</div>` : ''}
+            <p class="detail-empty">Spend is entered by hand; there's no time or expense feed behind it.</p>
+          </div>
+
+          <div class="detail-section">
+            <h2>Invoices</h2>
+            ${d.invoices.length ? d.invoices.map(i => `
+              <div class="detail-row">
+                <span>${i.viewUrl ? `<a href="${escapeHtml(i.viewUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(i.number || i.id)}</a>` : escapeHtml(i.number || i.id)}
+                  <div class="sub">${escapeHtml((i.status || '').toLowerCase())}</div></span>
+                <span>${escapeHtml(money(i.totalCents, false))}</span>
+              </div>`).join('')
+              : '<p class="detail-empty">No Wave invoices matched this client by name.</p>'}
+          </div>
+
+          ${p.notes ? `<div class="detail-section"><h2>Notes</h2>
+            <p style="font-size:14px;white-space:pre-wrap;">${escapeHtml(p.notes)}</p></div>` : ''}
+        </div>
+      </div>`;
+
+    document.getElementById('pdEdit').onclick = () =>
+      openProjectEditor(p, () => openProjectDetail(p.id));
+    document.getElementById('pdAddMs').onclick = () => openMilestoneEditor(p.id, null);
+
+    wireBoard(p.id);
+  }
+
+  // HTML5 drag-and-drop, with a click-to-edit fallback for anything that
+  // can't drag (touch, keyboard).
+  function wireBoard(projectId){
+    const board = document.getElementById('projBoard');
+    let dragged = null;
+
+    board.querySelectorAll('.board-card').forEach(card => {
+      card.addEventListener('dragstart', () => { dragged = card; card.classList.add('dragging'); });
+      card.addEventListener('dragend', () => { dragged = null; card.classList.remove('dragging'); });
+      card.addEventListener('click', () => {
+        const task = projDetail.tasks.find(t => t.id === Number(card.dataset.task));
+        if (task) openTaskEditor(projectId, task);
+      });
+    });
+
+    board.querySelectorAll('.board-col').forEach(col => {
+      col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('dragover'); });
+      col.addEventListener('dragleave', () => col.classList.remove('dragover'));
+      col.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        col.classList.remove('dragover');
+        if (!dragged) return;
+        const id = Number(dragged.dataset.task);
+        const status = col.dataset.status;
+        try {
+          const res = await fetch(`/api/projects/tasks/${id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status }),
+          });
+          if (!res.ok) throw new Error();
+          openProjectDetail(projectId);
+        } catch (err) {
+          showBanner('Could not move that card.', 'error');
+        }
+      });
+    });
+
+    board.querySelectorAll('[data-add]').forEach(btn => {
+      btn.addEventListener('click', () => openTaskEditor(projectId, null, btn.dataset.add));
+    });
+
+    const msWrap = document.getElementById('projMilestones');
+    msWrap.addEventListener('click', async (e) => {
+      const ed = e.target.closest('[data-ms-edit]');
+      if (ed) {
+        const m = projDetail.milestones.find(x => x.id === Number(ed.dataset.msEdit));
+        if (m) openMilestoneEditor(projectId, m);
+        return;
+      }
+      const del = e.target.closest('[data-ms-del]');
+      if (del) {
+        if (!confirm('Remove this milestone? Its calendar entry goes too.')) return;
+        await fetch(`/api/projects/milestones/${del.dataset.msDel}`, { method: 'DELETE' });
+        openProjectDetail(projectId);
+        loadCalendar();
+      }
+    });
+  }
+
+  function openTaskEditor(projectId, task, defaultStatus){
+    const isEdit = !!task;
+    const modal = openModal({
+      kicker: 'Task',
+      title: isEdit ? 'Edit task' : 'New task',
+      body: `
+        <label>Title</label>
+        <input type="text" id="tkTitle" value="${escapeHtml(task?.title || '')}" placeholder="What needs doing">
+        <div class="cols">
+          <div>
+            <label>Column</label>
+            <select id="tkCol">
+              ${projData.taskStatuses.map(s =>
+                `<option value="${s.key}" ${(task?.status || defaultStatus || 'todo') === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div><label>Assignee</label><input type="text" id="tkWho" value="${escapeHtml(task?.assignee || '')}"></div>
+        </div>
+        <label>Notes</label>
+        <textarea id="tkNotes">${escapeHtml(task?.notes || '')}</textarea>`,
+      actions: actionButtons(isEdit ? 'Save' : 'Add task', { destructive: isEdit ? 'Delete' : null }),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const title = document.getElementById('tkTitle').value.trim();
+      if (!title) { modalStatus('Give it a title.'); return; }
+      const payload = {
+        title,
+        status: document.getElementById('tkCol').value,
+        assignee: document.getElementById('tkWho').value.trim() || null,
+        notes: document.getElementById('tkNotes').value.trim() || null,
+      };
+      modalStatus('Saving…');
+      try {
+        const res = await fetch(isEdit ? `/api/projects/tasks/${task.id}` : `/api/projects/${projectId}/tasks`, {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save.');
+        closeModal();
+        openProjectDetail(projectId);
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
+
+    const del = modal.querySelector('[data-modal="delete"]');
+    if (del) del.onclick = async () => {
+      await fetch(`/api/projects/tasks/${task.id}`, { method: 'DELETE' });
+      closeModal();
+      openProjectDetail(projectId);
+    };
+  }
+
+  function openMilestoneEditor(projectId, milestone){
+    const isEdit = !!milestone;
+    const modal = openModal({
+      kicker: 'Milestone',
+      title: isEdit ? 'Edit milestone' : 'New milestone',
+      body: `
+        <label>Name</label>
+        <input type="text" id="msName" value="${escapeHtml(milestone?.name || '')}" placeholder="Phase 2 sign-off">
+        <div class="cols">
+          <div><label>Due</label><input type="date" id="msDue" value="${escapeHtml(milestone?.dueOn || '')}"></div>
+          <div>
+            <label>Status</label>
+            <select id="msStatus">
+              ${projData.milestoneStatuses.map(s =>
+                `<option value="${s.key}" ${(milestone?.status || 'pending') === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <p class="msg-snippet" style="margin-top:var(--space-2);">A dated, pending milestone appears on the calendar and in the subscription feed. Marking it hit or missed removes it.</p>`,
+      actions: actionButtons(isEdit ? 'Save' : 'Add milestone'),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const name = document.getElementById('msName').value.trim();
+      if (!name) { modalStatus('Give it a name.'); return; }
+      modalStatus('Saving…');
+      try {
+        const res = await fetch(isEdit ? `/api/projects/milestones/${milestone.id}` : `/api/projects/${projectId}/milestones`, {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            dueOn: document.getElementById('msDue').value || null,
+            status: document.getElementById('msStatus').value,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save.');
+        closeModal();
+        openProjectDetail(projectId);
+        loadCalendar();
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
+  }
+
+  wireDetailLinks(document.getElementById('projectDetail'));
+
   // --- Service desk ---
   let tkData = { statuses: [], priorities: [], tickets: [], stats: {} };
 
@@ -3157,7 +3655,7 @@
     loadFinance();
     loadScheduling();
     // CRM before tickets: the ticket editor's client dropdown reads from it.
-    loadCrm().then(loadTickets);
+    loadCrm().then(loadTickets).then(loadProjects);
 
     const params = new URLSearchParams(location.search);
     if (params.get('googleConnected')) {

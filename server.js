@@ -18,6 +18,7 @@ const scheduling = require('./lib/scheduling');
 const crm = require('./lib/crm');
 const tickets = require('./lib/tickets');
 const wave = require('./lib/wave');
+const projects = require('./lib/projects');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -735,6 +736,138 @@ app.patch('/api/crm/contacts/:id', express.json(), async (req, res) => {
 app.delete('/api/crm/contacts/:id', async (req, res) => {
   const removed = await crm.deleteContact(Number(req.params.id));
   if (!removed) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
+});
+
+// --- Projects ---
+
+app.get('/api/projects', async (req, res) => {
+  try {
+    res.json({
+      stages: projects.STAGES,
+      health: projects.HEALTH,
+      taskStatuses: projects.TASK_STATUSES,
+      milestoneStatuses: projects.MILESTONE_STATUSES,
+      projects: await projects.listProjects({ openOnly: req.query.open === '1' }),
+      stats: await projects.stats(),
+    });
+  } catch (err) {
+    console.error('Failed to list projects:', err);
+    res.status(500).json({ error: 'Could not load projects.' });
+  }
+});
+
+app.post('/api/projects', express.json(), async (req, res) => {
+  if (!req.body?.name) return res.status(400).json({ error: 'A name is required.' });
+  try {
+    res.status(201).json(await projects.createProject(req.body));
+  } catch (err) {
+    console.error('Failed to create project:', err);
+    res.status(500).json({ error: 'Could not create that project.' });
+  }
+});
+
+app.patch('/api/projects/:id', express.json(), async (req, res) => {
+  try {
+    const updated = await projects.updateProject(Number(req.params.id), req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Not found.' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Failed to update project:', err);
+    res.status(500).json({ error: 'Could not update that project.' });
+  }
+});
+
+app.delete('/api/projects/:id', async (req, res) => {
+  const removed = await projects.deleteProject(Number(req.params.id));
+  if (!removed) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
+});
+
+// Everything for one project's page: board, milestones, and the client's
+// tickets and invoices. Each extra source is wrapped so one failure
+// degrades a section rather than the page.
+app.get('/api/projects/:id/detail', async (req, res) => {
+  try {
+    const project = await projects.getProject(Number(req.params.id));
+    if (!project) return res.status(404).json({ error: 'Not found.' });
+
+    const detail = { project, tasks: [], milestones: [], tickets: [], invoices: [], warnings: [] };
+
+    detail.tasks = await projects.listTasks(project.id);
+    detail.milestones = await projects.listMilestones(project.id);
+
+    if (project.clientId) {
+      try {
+        const all = await tickets.listTickets({ openOnly: false });
+        detail.tickets = all.filter((t) => t.clientId === project.clientId);
+      } catch (err) {
+        detail.warnings.push(`Tickets unavailable: ${err.message}`);
+      }
+      try {
+        const fin = await wave.fetchInvoices({ pageSize: 100 });
+        if (fin && project.clientName) {
+          const name = project.clientName.trim().toLowerCase();
+          detail.invoices = fin.invoices.filter((i) =>
+            (i.customer || '').trim().toLowerCase() === name);
+        }
+      } catch (err) {
+        detail.warnings.push(`Wave unavailable: ${err.message}`);
+      }
+    }
+
+    res.json(detail);
+  } catch (err) {
+    console.error('Failed to build project detail:', err);
+    res.status(500).json({ error: 'Could not load that project.' });
+  }
+});
+
+app.post('/api/projects/:id/tasks', express.json(), async (req, res) => {
+  if (!req.body?.title) return res.status(400).json({ error: 'A title is required.' });
+  try {
+    const id = await projects.createTask(Number(req.params.id), req.body);
+    res.status(201).json({ id });
+  } catch (err) {
+    if (err.code === '23503') return res.status(404).json({ error: 'That project no longer exists.' });
+    console.error('Failed to create task:', err);
+    res.status(500).json({ error: 'Could not add that task.' });
+  }
+});
+
+app.patch('/api/projects/tasks/:id', express.json(), async (req, res) => {
+  const ok = await projects.updateTask(Number(req.params.id), req.body || {});
+  if (!ok) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
+});
+
+app.delete('/api/projects/tasks/:id', async (req, res) => {
+  const ok = await projects.deleteTask(Number(req.params.id));
+  if (!ok) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
+});
+
+app.post('/api/projects/:id/milestones', express.json(), async (req, res) => {
+  if (!req.body?.name) return res.status(400).json({ error: 'A name is required.' });
+  try {
+    const id = await projects.createMilestone(Number(req.params.id), req.body);
+    res.status(201).json({ id });
+  } catch (err) {
+    if (err.code === '23503') return res.status(404).json({ error: 'That project no longer exists.' });
+    console.error('Failed to create milestone:', err);
+    res.status(500).json({ error: 'Could not add that milestone.' });
+  }
+});
+
+app.patch('/api/projects/milestones/:id', express.json(), async (req, res) => {
+  const ok = await projects.updateMilestone(Number(req.params.id), req.body || {});
+  if (!ok) return res.status(404).json({ error: 'Not found.' });
+  res.status(204).end();
+});
+
+app.delete('/api/projects/milestones/:id', async (req, res) => {
+  const ok = await projects.deleteMilestone(Number(req.params.id));
+  if (!ok) return res.status(404).json({ error: 'Not found.' });
   res.status(204).end();
 });
 

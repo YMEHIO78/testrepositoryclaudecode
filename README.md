@@ -140,6 +140,25 @@ Real tickets, raised by hand or created from an email.
   from (account + UID) so a ticket can be traced back to its source.
 - Overdue and due-within-24h SLAs are colour-coded in the list.
 
+## Projects
+
+One project per package sold, hanging off a client. Each has a kanban
+board (drag cards between columns, or click one to edit), milestones,
+and a view of the client's tickets and Wave invoices.
+
+**Milestones project onto the calendar** exactly as ticket SLAs do: a
+dated, still-pending milestone on a live project shows as an all-day
+entry and flows into the `.ics` feed. Mark it hit or missed, or finish
+the project, and it disappears. That is what makes the mockup's
+"Marlowe milestone" line real.
+
+**Spend is entered by hand.** There is no time tracking or expense feed
+behind it, so a derived figure would be invented - the page says so.
+
+Deleting a project cascades to its tasks and milestones, and explicitly
+clears their calendar entries first; the cascade alone would leave
+deadlines behind for a project that no longer exists.
+
 ## Detail pages
 
 Clicking a row in **CRM** or **Service Desk** opens a detail page rather

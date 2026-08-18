@@ -89,6 +89,31 @@ Indexed on `lower(email)` — that index is what lets an inbox sender be
 matched to a client on every inbox load. Only one contact per client may
 be primary; enforced on write, not by constraint.
 
+### `projects` / `project_tasks` / `project_milestones`
+`projects`: name, `client_id` -> `clients` ON DELETE SET NULL, stage
+(`scoping`/`build`/`review`/`blocked`/`done`), health
+(`on_track`/`at_risk`/`off_track`), owner, `budget_cents`,
+`spent_cents`, `starts_on`, `due_on`, notes.
+
+`spent_cents` is entered by hand. There is no time tracking or expense
+feed to derive it from, and deriving it from nothing would be a
+fabricated number.
+
+`project_tasks`: kanban cards - `project_id` **ON DELETE CASCADE**,
+title, notes, status (`todo`/`doing`/`blocked`/`done`), assignee,
+`position` (orders within a column; gaps are fine).
+
+`project_milestones`: `project_id` **ON DELETE CASCADE**, name, `due_on`,
+status (`pending`/`hit`/`missed`), `calendar_event_id` -> `calendar_events`
+ON DELETE SET NULL.
+
+Milestones project onto the calendar exactly as ticket SLAs do: a dated,
+**pending** milestone on a **non-done** project has an all-day
+`source='project'` event; anything else does not. Note that deleting a
+project cascades to milestones but **not** to their calendar events, so
+`deleteProject` clears those first - otherwise the calendar keeps
+deadlines for a project that no longer exists.
+
 ### `ticket_events` - append-only activity log
 `ticket_id` -> `tickets` ON DELETE CASCADE, `kind`, `detail`, `created_at`.
 
@@ -119,6 +144,11 @@ from.
 clients ─┬─< contacts            (cascade delete)
          ├─< tickets             (set null)
          └   (referenced by bookings only via the event)
+
+projects ─┬─< project_tasks       (cascade delete)
+         └─< project_milestones  (cascade delete)
+project_milestones ──> calendar_events  (set null)
+projects ──> clients             (set null)
 
 tickets ─< ticket_events         (cascade delete)
 tickets ──> calendar_events      (set null; SLA projection)
