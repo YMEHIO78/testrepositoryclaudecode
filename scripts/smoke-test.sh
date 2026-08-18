@@ -136,7 +136,12 @@ else
     | grep -q "SLA due" && bad "resolved ticket left its SLA on the calendar" \
                         || ok "resolving retracts the SLA entry"
 
-  # Booking/ticket-owned events must reject direct edits.
+  # Detail page: aggregate endpoint must return the ticket and its log.
+  DET=$(api "$BASE_URL/api/tickets/$TKID/detail")
+  echo "$DET" | grep -q '"ticket"' && ok "ticket detail loads" || bad "ticket detail" "$(echo "$DET" | head -c 150)"
+  echo "$DET" | grep -q '"kind":"created"' && ok "activity log records creation" || bad "activity log missing creation"
+  echo "$DET" | grep -q '"kind":"status"' && ok "activity log records the status change" || bad "activity log missing status change"
+
   api -o /dev/null -X DELETE "$BASE_URL/api/tickets/$TKID"
 fi
 
@@ -155,6 +160,15 @@ else
   echo "$CL" | grep -q '"valueCents":123456' \
     && ok "money stored as integer cents" \
     || bad "money handling" "valueCents was not round-tripped"
+
+  # Detail page aggregates several sources; each must degrade on its own
+  # rather than failing the response.
+  CD=$(api "$BASE_URL/api/crm/clients/$CLID/detail")
+  echo "$CD" | grep -q '"client"'   && ok "client detail loads"            || bad "client detail" "$(echo "$CD" | head -c 150)"
+  echo "$CD" | grep -q '"tickets"'  && ok "client detail includes tickets" || bad "client detail tickets"
+  echo "$CD" | grep -q '"invoices"' && ok "client detail includes invoices"|| bad "client detail invoices"
+  echo "$CD" | grep -q '"warnings"' && ok "client detail reports warnings" || bad "client detail warnings"
+
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$CLID"
 fi
 

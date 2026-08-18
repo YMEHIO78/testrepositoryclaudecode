@@ -227,6 +227,29 @@
   .cash-row .v.warn{color:var(--color-accent-2);}
   .cash-row .v.accent{color:var(--color-accent);}
 
+  /* Detail pages (client, ticket) */
+  .crumb-back{display:inline-block;font-size:13px;color:var(--color-accent);margin-bottom:var(--space-2);}
+  .detail-head{border-bottom:1px solid rgba(32,30,29,.18);padding-bottom:var(--space-3);margin-bottom:var(--space-4);}
+  .detail-head h1{font-size:34px;margin:0 0 6px;letter-spacing:-.015em;}
+  .detail-meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:14px;color:#605d5d;}
+  .detail-cols{display:grid;grid-template-columns:1.4fr 1fr;gap:40px;align-items:start;}
+  @media (max-width:900px){ .detail-cols{grid-template-columns:1fr;} }
+  .detail-section{margin-bottom:var(--space-6);}
+  .detail-section h2{font-size:15px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;margin:0 0 10px;
+    border-bottom:1px solid rgba(32,30,29,.18);padding-bottom:7px;}
+  .detail-row{display:flex;justify-content:space-between;gap:12px;align-items:baseline;
+    padding:8px 0;border-bottom:1px solid rgba(32,30,29,.08);font-size:14px;}
+  .detail-row:last-child{border-bottom:none;}
+  .detail-row .sub{font-size:12.5px;color:var(--color-neutral-600);}
+  .detail-row a{cursor:pointer;}
+  .detail-empty{font-size:13px;color:var(--color-neutral-600);padding:8px 0;}
+  .detail-warn{font-size:12.5px;color:var(--color-accent-2);padding:6px 0;}
+  .log-entry{display:flex;gap:12px;padding:7px 0;border-bottom:1px solid rgba(32,30,29,.08);font-size:13px;}
+  .log-entry:last-child{border-bottom:none;}
+  .log-kind{flex:none;width:74px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--color-accent);font-weight:600;padding-top:2px;}
+  .log-when{margin-left:auto;flex:none;font-size:12px;color:var(--color-neutral-500);}
+
   /* Inbox master-detail, per the reference layout */
   .inbox-view{display:flex;align-items:stretch;min-height:0;flex:1;padding:0;max-width:none;}
   .inbox-list{width:380px;flex:none;border-right:1px solid var(--color-divider);display:flex;flex-direction:column;min-height:0;}
@@ -580,6 +603,18 @@
       </div>
 
       <div class="note">Mail from a known contact's address is labelled with their client automatically in the <a href="#" data-goto="inbox">Inbox</a>. Projects and tickets will hang off these records once those modules are real.</div>
+    </div>
+
+    <!-- ================= CLIENT DETAIL ================= -->
+    <div class="view hidden" id="view-client">
+      <a href="#" class="crumb-back" data-goto="crm">← CRM &amp; Leads</a>
+      <div id="clientDetail"><p class="msg-snippet">Loading…</p></div>
+    </div>
+
+    <!-- ================= TICKET DETAIL ================= -->
+    <div class="view hidden" id="view-ticket">
+      <a href="#" class="crumb-back" data-goto="tickets">← Service Desk</a>
+      <div id="ticketDetail"><p class="msg-snippet">Loading…</p></div>
     </div>
 
     <!-- ================= PROJECTS ================= -->
@@ -1271,8 +1306,7 @@
       renderInboxList();
       openMessage(row.dataset.account, row.dataset.uid);
     } else if (target === 'tickets' && row.dataset.ticket) {
-      const t = tkData.tickets.find(x => x.id === Number(row.dataset.ticket));
-      if (t) openTicketEditor(t);
+      openTicketDetail(Number(row.dataset.ticket));
     }
   });
 
@@ -1529,7 +1563,9 @@
       } else if (act === 'addclient') {
         openAddClientFromEmail(msg);
       } else if (act === 'viewclient') {
-        goto('crm');
+        // Straight to that client's page, not the CRM list.
+        if (msg.client?.id) openClientDetail(msg.client.id);
+        else goto('crm');
       } else if (act === 'ticket') {
         openTicketFromEmail(msg);
       }
@@ -1856,6 +1892,228 @@
       <button type="button" class="btn" data-modal="save">${escapeHtml(saveLabel)}</button>`;
   }
 
+  // --- Detail pages ---
+  // Both are aggregate views: they pull from several sources and each
+  // section degrades on its own rather than failing the page.
+
+  async function openClientDetail(id){
+    goto('client');
+    const wrap = document.getElementById('clientDetail');
+    wrap.innerHTML = '<p class="msg-snippet">Loading…</p>';
+
+    let d;
+    try {
+      const res = await fetch(`/api/crm/clients/${id}/detail`);
+      d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Could not load.');
+    } catch (err) {
+      wrap.innerHTML = `<p class="msg-snippet" style="color:var(--red);">${escapeHtml(err.message)}</p>`;
+      return;
+    }
+
+    const c = d.client;
+    const stage = stageMeta(c.stage);
+    const openTk = d.tickets.filter(t => !['resolved','closed'].includes(t.status));
+    const outstanding = d.invoices.reduce((s, i) => s + (i.dueCents || 0), 0);
+
+    wrap.innerHTML = `
+      <div class="detail-head">
+        <h1>${escapeHtml(c.name)}</h1>
+        <div class="detail-meta">
+          <span class="pill ${stage.tone}">${escapeHtml(stage.label)}</span>
+          <span>${escapeHtml(money(c.valueCents, c.recurring))}</span>
+          <span>Last touch: ${escapeHtml(relativeDate(c.lastTouchAt))}</span>
+          <button type="button" class="btn ghost" id="cdEdit" style="margin-left:auto;">Edit</button>
+        </div>
+      </div>
+
+      ${d.warnings.length ? d.warnings.map(w =>
+        `<p class="detail-warn">${escapeHtml(w)}</p>`).join('') : ''}
+
+      <div class="detail-cols">
+        <div>
+          <div class="detail-section">
+            <h2>Tickets</h2>
+            ${d.tickets.length ? d.tickets.map(t => `
+              <div class="detail-row">
+                <span>
+                  <a data-ticket="${t.id}"><b>${escapeHtml(t.reference)}</b></a>
+                  ${escapeHtml(t.subject)}
+                  <div class="sub">${escapeHtml(tkMeta(tkData.statuses, t.status).label)}
+                    ${t.slaDueAt ? ' · SLA ' + slaLabel(t.slaDueAt) : ''}</div>
+                </span>
+              </div>`).join('')
+              : '<p class="detail-empty">No tickets for this client.</p>'}
+          </div>
+
+          <div class="detail-section">
+            <h2>Recent mail</h2>
+            ${d.emails.length ? d.emails.map(m => `
+              <div class="detail-row">
+                <span>
+                  <a data-account="${escapeHtml(m.account)}" data-uid="${escapeHtml(m.id)}">${escapeHtml(m.subject || '(no subject)')}</a>
+                  <div class="sub">${escapeHtml(m.from)} · to ${escapeHtml(m.account)}</div>
+                </span>
+                <span class="sub">${escapeHtml(timeAgo(m.receivedDateTime))}</span>
+              </div>`).join('')
+              : `<p class="detail-empty">${c.contacts.some(x => x.email)
+                  ? 'No mail found from their addresses.'
+                  : 'No contact has an email address, so there is nothing to search for.'}</p>`}
+          </div>
+
+          <div class="detail-section">
+            <h2>Invoices</h2>
+            ${d.invoices.length ? d.invoices.map(i => `
+              <div class="detail-row">
+                <span>
+                  ${i.viewUrl ? `<a href="${escapeHtml(i.viewUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(i.number || i.id)}</a>` : escapeHtml(i.number || i.id)}
+                  <div class="sub">${escapeHtml((i.status || '').toLowerCase())}${i.dueDate ? ' · due ' + escapeHtml(i.dueDate) : ''}</div>
+                </span>
+                <span>${escapeHtml(money(i.totalCents, false))}${i.dueCents ? ` <span class="sub">(${escapeHtml(money(i.dueCents, false))} outstanding)</span>` : ''}</span>
+              </div>`).join('') + (d.invoiceMatchNote
+                ? `<p class="detail-empty">${escapeHtml(d.invoiceMatchNote)}</p>` : '')
+              : `<p class="detail-empty">No Wave invoices matched this client${d.invoiceMatchNote ? ' by customer name' : ' (Wave not connected)'}.</p>`}
+          </div>
+        </div>
+
+        <div>
+          <div class="detail-section">
+            <h2>At a glance</h2>
+            <div class="detail-row"><span>Open tickets</span><span>${openTk.length}</span></div>
+            <div class="detail-row"><span>Outstanding</span><span>${escapeHtml(money(outstanding, false))}</span></div>
+            <div class="detail-row"><span>Contacts</span><span>${c.contacts.length}</span></div>
+          </div>
+
+          <div class="detail-section">
+            <h2>Contacts</h2>
+            ${c.contacts.length ? c.contacts.map(ct => `
+              <div class="detail-row">
+                <span>
+                  <b>${escapeHtml(ct.name)}</b>${ct.isPrimary ? ' <span class="pill brand">primary</span>' : ''}
+                  <div class="sub">${escapeHtml(ct.email || 'no email')}${ct.role ? ' · ' + escapeHtml(ct.role) : ''}</div>
+                </span>
+              </div>`).join('')
+              : '<p class="detail-empty">No contacts yet.</p>'}
+          </div>
+
+          ${c.notes ? `
+          <div class="detail-section">
+            <h2>Notes</h2>
+            <p style="font-size:14px;white-space:pre-wrap;">${escapeHtml(c.notes)}</p>
+          </div>` : ''}
+        </div>
+      </div>`;
+
+    document.getElementById('cdEdit').onclick = () => {
+      const fresh = crmData.clients.find(x => x.id === c.id) || c;
+      openClientEditor(fresh, () => openClientDetail(c.id));
+    };
+  }
+
+  async function openTicketDetail(id){
+    goto('ticket');
+    const wrap = document.getElementById('ticketDetail');
+    wrap.innerHTML = '<p class="msg-snippet">Loading…</p>';
+
+    let d;
+    try {
+      const res = await fetch(`/api/tickets/${id}/detail`);
+      d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Could not load.');
+    } catch (err) {
+      wrap.innerHTML = `<p class="msg-snippet" style="color:var(--red);">${escapeHtml(err.message)}</p>`;
+      return;
+    }
+
+    const t = d.ticket;
+    const st = tkMeta(tkData.statuses, t.status);
+    const pr = tkMeta(tkData.priorities, t.priority);
+
+    wrap.innerHTML = `
+      <div class="detail-head">
+        <div class="dialog-kicker">${escapeHtml(t.reference)}</div>
+        <h1>${escapeHtml(t.subject)}</h1>
+        <div class="detail-meta">
+          <span class="pill ${st.tone}">${escapeHtml(st.label)}</span>
+          <span class="pill ${pr.tone}">${escapeHtml(pr.label)}</span>
+          ${t.slaDueAt ? `<span>SLA ${slaLabel(t.slaDueAt)}</span>` : '<span>No SLA date</span>'}
+          <button type="button" class="btn ghost" id="tdEdit" style="margin-left:auto;">Edit</button>
+        </div>
+      </div>
+
+      <div class="detail-cols">
+        <div>
+          <div class="detail-section">
+            <h2>Details</h2>
+            ${t.body
+              ? `<p style="font-size:14px;white-space:pre-wrap;max-width:66ch;">${escapeHtml(t.body)}</p>`
+              : '<p class="detail-empty">No description.</p>'}
+          </div>
+
+          <div class="detail-section">
+            <h2>Activity</h2>
+            ${d.eventsError ? `<p class="detail-warn">${escapeHtml(d.eventsError)}</p>` : ''}
+            ${d.events.length ? d.events.map(e => `
+              <div class="log-entry">
+                <span class="log-kind">${escapeHtml(e.kind)}</span>
+                <span>${escapeHtml(e.detail || '')}</span>
+                <span class="log-when">${escapeHtml(relativeDate(e.at))}</span>
+              </div>`).join('')
+              : '<p class="detail-empty">Nothing logged yet.</p>'}
+          </div>
+        </div>
+
+        <div>
+          <div class="detail-section">
+            <h2>Client</h2>
+            ${d.client
+              ? `<div class="detail-row">
+                   <span><a data-client="${d.client.id}"><b>${escapeHtml(d.client.name)}</b></a>
+                     <div class="sub">${escapeHtml(stageMeta(d.client.stage).label)}</div></span>
+                 </div>`
+              : '<p class="detail-empty">Not linked to a client.</p>'}
+            ${t.contactEmail ? `<div class="detail-row"><span class="sub">${escapeHtml(t.contactEmail)}</span></div>` : ''}
+          </div>
+
+          <div class="detail-section">
+            <h2>Origin</h2>
+            <div class="detail-row"><span>Source</span><span>${t.source === 'email' ? 'Email' : 'Manual'}</span></div>
+            <div class="detail-row"><span>Raised</span><span>${escapeHtml(relativeDate(t.createdAt))}</span></div>
+            ${t.resolvedAt ? `<div class="detail-row"><span>Resolved</span><span>${escapeHtml(relativeDate(t.resolvedAt))}</span></div>` : ''}
+            ${t.source === 'email' && t.sourceAccount && t.sourceUid
+              ? `<div class="detail-row"><span></span><span><a data-account="${escapeHtml(t.sourceAccount)}" data-uid="${escapeHtml(t.sourceUid)}">Open the original email</a></span></div>`
+              : ''}
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('tdEdit').onclick = () => {
+      const fresh = tkData.tickets.find(x => x.id === t.id) || t;
+      openTicketEditor(fresh, null, () => openTicketDetail(t.id));
+    };
+  }
+
+  // One delegated listener per detail pane, attached at load. Attaching
+  // inside the render would stack a listener per visit; {once:true} would
+  // die after the first click.
+  function wireDetailLinks(el){
+    el.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-ticket]');
+      if (t) { openTicketDetail(Number(t.dataset.ticket)); return; }
+      const c = e.target.closest('[data-client]');
+      if (c) { openClientDetail(Number(c.dataset.client)); return; }
+      const m = e.target.closest('[data-uid]');
+      if (m && m.dataset.account) {
+        goto('inbox');
+        selectedMailId = `${m.dataset.account}:${m.dataset.uid}`;
+        renderInboxList();
+        openMessage(m.dataset.account, m.dataset.uid);
+      }
+    });
+  }
+  wireDetailLinks(document.getElementById('clientDetail'));
+  wireDetailLinks(document.getElementById('ticketDetail'));
+
   // --- Service desk ---
   let tkData = { statuses: [], priorities: [], tickets: [], stats: {} };
 
@@ -1917,7 +2175,7 @@
   document.getElementById('tkRows').addEventListener('click', (e) => {
     const tr = e.target.closest('tr[data-id]');
     if (!tr) return;
-    openTicketEditor(tkData.tickets.find(t => t.id === Number(tr.dataset.id)));
+    openTicketDetail(Number(tr.dataset.id));
   });
 
   const pad2 = n => String(n).padStart(2,'0');
@@ -1928,7 +2186,7 @@
     return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   }
 
-  function openTicketEditor(ticket, prefill){
+  function openTicketEditor(ticket, prefill, onSaved){
     const isEdit = !!ticket;
     const t = ticket || prefill || {};
 
@@ -2007,6 +2265,7 @@
         if (!isEdit) showBanner(`Created ${d.reference}.`, 'ok');
         loadTickets();
         loadCalendar();
+        if (onSaved) onSaved();
       } catch (err) {
         modalStatus(err.message);
       }
@@ -2019,6 +2278,8 @@
       closeModal();
       loadTickets();
       loadCalendar();
+      // The detail page for a deleted ticket would 404 — go back to the list.
+      if (onSaved) goto('tickets');
     };
   }
 
@@ -2100,10 +2361,10 @@
   document.getElementById('crmRows').addEventListener('click', (e) => {
     const tr = e.target.closest('tr[data-id]');
     if (!tr) return;
-    openClientEditor(crmData.clients.find(c => c.id === Number(tr.dataset.id)));
+    openClientDetail(Number(tr.dataset.id));
   });
 
-  function openClientEditor(client){
+  function openClientEditor(client, onSaved){
     const isEdit = !!client;
     const dollars = client?.valueCents != null ? (client.valueCents / 100) : '';
 
@@ -2175,7 +2436,7 @@
         await loadCrm();
         // Reopen on the saved record so contacts can be added straight away.
         if (!isEdit) openClientEditor(crmData.clients.find(c => c.id === d.id));
-        else closeModal();
+        else { closeModal(); if (onSaved) onSaved(); }
       } catch (err) {
         modalStatus(err.message);
       }
@@ -2188,6 +2449,8 @@
       closeModal();
       loadCrm();
       loadInbox();
+      // The detail page for a deleted client would 404 — go back to the list.
+      if (onSaved) goto('crm');
     };
 
     if (isEdit) {

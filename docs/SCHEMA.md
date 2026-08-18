@@ -89,6 +89,14 @@ Indexed on `lower(email)` — that index is what lets an inbox sender be
 matched to a client on every inbox load. Only one contact per client may
 be primary; enforced on write, not by constraint.
 
+### `ticket_events` - append-only activity log
+`ticket_id` -> `tickets` ON DELETE CASCADE, `kind`, `detail`, `created_at`.
+
+Written on creation and whenever status, priority, SLA, client or subject
+changes - only fields that actually changed are logged, so the history
+reads as history rather than noise. Without it a ticket detail page would
+just be the edit form in a different shape.
+
 ### `tickets` — service desk
 `reference` (unique, `TKT-###`), `subject`, `body`, `client_id` →
 `clients` ON DELETE SET NULL, `contact_email`, `status`, `priority`,
@@ -112,6 +120,7 @@ clients ─┬─< contacts            (cascade delete)
          ├─< tickets             (set null)
          └   (referenced by bookings only via the event)
 
+tickets ─< ticket_events         (cascade delete)
 tickets ──> calendar_events      (set null; SLA projection)
 bookings ──> calendar_events     (cascade delete)
 bookings ──> booking_event_types (set null)

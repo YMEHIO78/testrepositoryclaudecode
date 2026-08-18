@@ -606,6 +606,83 @@ app.get('/api/crm/clients', async (req, res) => {
   }
 });
 
+// Everything about one client in a single response: contacts, their
+// tickets, recent correspondence, and their Wave invoices. Each source is
+// wrapped separately — a slow IMAP search or a Wave outage degrades one
+// section instead of failing the page.
+app.get('/api/crm/clients/:id/detail', async (req, res) => {
+  try {
+    const client = await crm.getClient(Number(req.params.id));
+    if (!client) return res.status(404).json({ error: 'Not found.' });
+
+    const detail = { client, tickets: [], emails: [], invoices: [], warnings: [] };
+
+    try {
+      const all = await tickets.listTickets({ openOnly: false });
+      detail.tickets = all.filter((t) => t.clientId === client.id);
+    } catch (err) {
+      detail.warnings.push(`Tickets unavailable: ${err.message}`);
+    }
+
+    const addresses = client.contacts.map((c) => c.email).filter(Boolean);
+    if (addresses.length) {
+      try {
+        const accounts = (await mail.listAccounts())
+          .filter((a) => configuredMailboxes().includes(a));
+        const perAccount = await Promise.all(accounts.map((a) =>
+          mail.findFromAddresses(a, addresses, { limit: 10 }).catch(() => [])));
+        detail.emails = perAccount.flat()
+          .sort((a, b) => new Date(b.receivedDateTime || 0) - new Date(a.receivedDateTime || 0))
+          .slice(0, 15);
+      } catch (err) {
+        detail.warnings.push(`Mail lookup failed: ${err.message}`);
+      }
+    }
+
+    try {
+      const fin = await wave.fetchInvoices({ pageSize: 100 });
+      if (fin) {
+        // Wave has no link to our client records, so match on customer
+        // name. Imperfect, and stated as such in the UI.
+        const name = client.name.trim().toLowerCase();
+        detail.invoices = fin.invoices.filter((i) =>
+          (i.customer || '').trim().toLowerCase() === name);
+        detail.invoiceMatchNote = 'Matched to Wave by customer name.';
+      }
+    } catch (err) {
+      detail.warnings.push(`Wave unavailable: ${err.message}`);
+    }
+
+    res.json(detail);
+  } catch (err) {
+    console.error('Failed to build client detail:', err);
+    res.status(500).json({ error: 'Could not load that client.' });
+  }
+});
+
+app.get('/api/tickets/:id/detail', async (req, res) => {
+  try {
+    const ticket = await tickets.getTicket(Number(req.params.id));
+    if (!ticket) return res.status(404).json({ error: 'Not found.' });
+
+    const detail = { ticket, events: [], client: null };
+    try {
+      detail.events = await tickets.listEvents(ticket.id);
+    } catch (err) {
+      detail.eventsError = err.message;
+    }
+    if (ticket.clientId) {
+      try {
+        detail.client = await crm.getClient(ticket.clientId);
+      } catch (err) { /* the ticket still renders without it */ }
+    }
+    res.json(detail);
+  } catch (err) {
+    console.error('Failed to build ticket detail:', err);
+    res.status(500).json({ error: 'Could not load that ticket.' });
+  }
+});
+
 app.post('/api/crm/clients', express.json(), async (req, res) => {
   if (!req.body?.name) return res.status(400).json({ error: 'A name is required.' });
   try {

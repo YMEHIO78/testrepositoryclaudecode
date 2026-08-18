@@ -140,6 +140,25 @@ Real tickets, raised by hand or created from an email.
   from (account + UID) so a ticket can be traced back to its source.
 - Overdue and due-within-24h SLAs are colour-coded in the list.
 
+## Detail pages
+
+Clicking a row in **CRM** or **Service Desk** opens a detail page rather
+than the edit modal; **Edit** on that page opens the modal, and saving
+refreshes the page underneath.
+
+**Client detail** aggregates from four sources: the client record, its
+tickets, recent mail from any contact address (an IMAP search, so it
+reaches mail that was never downloaded), and Wave invoices. Each source
+is wrapped separately - a slow mail search or a Wave outage degrades one
+section and reports a warning instead of failing the page.
+
+Wave has no link to these client records, so invoices are matched on
+**customer name**. That is imperfect and the page says so.
+
+**Ticket detail** shows the description, an activity log, the linked
+client, and a link back to the originating email when the ticket came
+from one.
+
 ## Inbox
 
 Beyond listing mail, a message can be opened and worked on:
