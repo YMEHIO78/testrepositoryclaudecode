@@ -21,12 +21,13 @@
   MARKUP         grep '================= <NAME>'
     DASHBOARD  INBOX  CALENDAR  SCHEDULING  CRM  PROJECTS  TICKETS
     FILES  FINANCE  PEOPLE  INTEGRATIONS  SPEC
-    PROJECTS / FILES / PEOPLE / SPEC are still hardcoded mockup markup.
-    Everything else renders from the API.
+    SPEC is still hardcoded mockup markup. Everything else renders
+    from the API.
 
   JS             grep '// --- <NAME> ---'
     Mail . Wave connection . Finance . Dashboard . Inbox: master-detail
-    Modal dialogs . Service desk . CRM . Scheduling
+    Modal dialogs . Detail pages . Files . People . Projects
+    Service desk . CRM . Scheduling
     Google Calendar bridge . Calendly . Calendar
 
   Conventions
@@ -697,19 +698,29 @@
     <!-- ================= FILES ================= -->
     <div class="view hidden" id="view-files">
       <h1>Files</h1>
-      <p class="sub">A folder per client, mirrored to OneDrive. The app holds the index — client, project, type, share state — so files are findable from the record they belong to.</p>
+      <p class="sub">Stored in this app's object storage and served through it, so every download stays behind the login. Tag a file to a client or project to find it from their page.</p>
+
+      <div class="stat-strip" id="filesStats"></div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin:18px 0 12px;flex-wrap:wrap;">
+        <button type="button" class="btn" id="filesUploadBtn">Upload file</button>
+        <input type="file" id="filesInput" class="hidden">
+        <select id="filesClientFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
+          <option value="">All clients</option>
+        </select>
+        <span class="msg-snippet" id="filesStatus"></span>
+      </div>
+
       <div class="card">
         <table>
-          <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>Sharing</th><th>Modified</th></tr></thead>
-          <tbody>
-            <tr><td>Hatcher &amp; Co. Logistics</td><td>Folder · 14 items</td><td>—</td><td>Client link</td><td>Today</td></tr>
-            <tr><td>refresh-log-0809.txt</td><td>Source data</td><td>18 KB</td><td>Internal</td><td>Today</td></tr>
-            <tr><td>screenshot-error.png</td><td>Working file</td><td>412 KB</td><td>Internal</td><td>Today</td></tr>
-            <tr><td>MSA — Ridgeline Dental Group.pdf</td><td>Contract</td><td>1.1 MB</td><td>Client link</td><td>14 Mar</td></tr>
-          </tbody>
+          <thead><tr><th>File</th><th>Client</th><th>Project</th><th>Size</th><th>Added</th><th></th></tr></thead>
+          <tbody id="filesRows"><tr><td colspan="6" class="msg-snippet">Loading…</td></tr></tbody>
         </table>
       </div>
+
+      <div class="note" id="filesNote"></div>
     </div>
+
 
     <!-- ================= FINANCE ================= -->
     <div class="view hidden" id="view-finance">
@@ -2156,6 +2167,162 @@
   }
   wireDetailLinks(document.getElementById('clientDetail'));
   wireDetailLinks(document.getElementById('ticketDetail'));
+
+  // --- Files ---
+  let filesData = { configured: false, files: [], stats: {}, maxBytes: 0 };
+
+  function fileSize(bytes){
+    if (bytes == null) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  async function loadFiles(){
+    const rows = document.getElementById('filesRows');
+    if (!rows) return;
+    const clientId = document.getElementById('filesClientFilter').value;
+    try {
+      filesData = await (await fetch(`/api/files${clientId ? '?clientId=' + clientId : ''}`)).json();
+    } catch (err) {
+      rows.innerHTML = '<tr><td colspan="6" class="msg-snippet">Could not load files.</td></tr>';
+      return;
+    }
+    renderFiles();
+  }
+
+  function renderFiles(){
+    const rows = document.getElementById('filesRows');
+    const s = filesData.stats || {};
+    const monthly = (((s.bytes || 0) / 1073741824) * 0.015).toFixed(2);
+
+    document.getElementById('filesStats').innerHTML = `
+      <div class="stat-cell">
+        <span class="label">Files</span>
+        <span class="value accent">${s.count ?? 0}</span>
+        <span class="note">stored</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Total size</span>
+        <span class="value small">${escapeHtml(fileSize(s.bytes ?? 0))}</span>
+        <span class="note">about $${escapeHtml(monthly)}/month</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Per-file limit</span>
+        <span class="value small">${escapeHtml(fileSize(filesData.maxBytes))}</span>
+        <span class="note">uploads stream through the app</span>
+      </div>`;
+
+    // Keep the client filter in step with the CRM.
+    const filter = document.getElementById('filesClientFilter');
+    if (filter.options.length <= 1 && crmData.clients.length) {
+      filter.innerHTML = '<option value="">All clients</option>'
+        + crmData.clients.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+    }
+
+    document.getElementById('filesNote').innerHTML = filesData.configured
+      ? 'Object storage here has no automatic backup and no version history. Deleting a file is permanent — there is nothing to restore from.'
+      : '<b>File storage is not configured.</b> The FILES_* variables are missing, so uploads are disabled.';
+
+    if (!filesData.files.length) {
+      rows.innerHTML = `<tr><td colspan="6" class="msg-snippet">${filesData.configured ? 'No files yet.' : 'Storage not configured.'}</td></tr>`;
+      return;
+    }
+
+    rows.innerHTML = filesData.files.map(f => `
+      <tr data-id="${f.id}">
+        <td><a href="/api/files/${f.id}/download" download><b>${escapeHtml(f.name)}</b></a>
+          ${f.notes ? `<div class="sub">${escapeHtml(f.notes)}</div>` : ''}</td>
+        <td>${f.clientId ? `<a data-client="${f.clientId}">${escapeHtml(f.clientName || '—')}</a>` : '—'}</td>
+        <td>${f.projectId ? `<a data-project="${f.projectId}">${escapeHtml(f.projectName || '—')}</a>` : '—'}</td>
+        <td class="num">${escapeHtml(fileSize(f.sizeBytes))}</td>
+        <td>${escapeHtml(relativeDate(f.createdAt))}</td>
+        <td><button type="button" class="int-btn connected" data-del="${f.id}">Delete</button></td>
+      </tr>`).join('');
+  }
+
+  document.getElementById('filesClientFilter').addEventListener('change', loadFiles);
+  document.getElementById('filesUploadBtn').addEventListener('click', () => {
+    if (!filesData.configured) { showBanner('File storage is not configured.', 'error'); return; }
+    document.getElementById('filesInput').click();
+  });
+
+  document.getElementById('filesInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) openUploadDialog(file);
+  });
+
+  function openUploadDialog(file){
+    const modal = openModal({
+      kicker: 'Files',
+      title: 'Upload file',
+      body: `
+        <p><b>${escapeHtml(file.name)}</b> <span class="msg-snippet">· ${escapeHtml(fileSize(file.size))}</span></p>
+        <label>Client</label>
+        <select id="upClient">
+          <option value="">— none —</option>
+          ${crmData.clients.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+        </select>
+        <label>Project</label>
+        <select id="upProject">
+          <option value="">— none —</option>
+          ${projData.projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}
+        </select>
+        <label>Notes</label>
+        <input type="text" id="upNotes" placeholder="What this is">
+        <p class="msg-snippet" style="margin-top:var(--space-2);">Limit ${escapeHtml(fileSize(filesData.maxBytes))}. No backup or version history — deleting is permanent.</p>`,
+      actions: actionButtons('Upload'),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      if (file.size > filesData.maxBytes) {
+        modalStatus(`That file is over the ${fileSize(filesData.maxBytes)} limit.`);
+        return;
+      }
+      modalStatus('Uploading…');
+      try {
+        const params = new URLSearchParams({ name: file.name });
+        const c = document.getElementById('upClient').value;
+        const p = document.getElementById('upProject').value;
+        const n = document.getElementById('upNotes').value.trim();
+        if (c) params.set('clientId', c);
+        if (p) params.set('projectId', p);
+        if (n) params.set('notes', n);
+
+        // Raw body rather than multipart: the server reads it with
+        // express.raw, so no parser sits in the middle.
+        const res = await fetch(`/api/files?${params}`, {
+          method: 'POST',
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          body: file,
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Upload failed.');
+        closeModal();
+        showBanner(`Uploaded ${file.name}.`, 'ok');
+        loadFiles();
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
+  }
+
+  document.getElementById('filesRows').addEventListener('click', async (e) => {
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      const f = filesData.files.find(x => x.id === Number(del.dataset.del));
+      if (!confirm(`Delete "${f ? f.name : 'this file'}"? There is no backup — this cannot be undone.`)) return;
+      await fetch(`/api/files/${del.dataset.del}`, { method: 'DELETE' });
+      loadFiles();
+      return;
+    }
+    const c = e.target.closest('[data-client]');
+    if (c) { openClientDetail(Number(c.dataset.client)); return; }
+    const p = e.target.closest('[data-project]');
+    if (p) openProjectDetail(Number(p.dataset.project));
+  });
 
   // --- People ---
   let peopleData = { engagements: [], people: [] };
@@ -3824,7 +3991,7 @@
     loadFinance();
     loadScheduling();
     // CRM before tickets: the ticket editor's client dropdown reads from it.
-    loadCrm().then(loadTickets).then(loadProjects).then(loadPeople);
+    loadCrm().then(loadTickets).then(loadProjects).then(loadPeople).then(loadFiles);
 
     const params = new URLSearchParams(location.search);
     if (params.get('googleConnected')) {

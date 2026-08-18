@@ -20,6 +20,7 @@ const tickets = require('./lib/tickets');
 const wave = require('./lib/wave');
 const projects = require('./lib/projects');
 const people = require('./lib/people');
+const files = require('./lib/files');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -738,6 +739,88 @@ app.delete('/api/crm/contacts/:id', async (req, res) => {
   const removed = await crm.deleteContact(Number(req.params.id));
   if (!removed) return res.status(404).json({ error: 'Not found.' });
   res.status(204).end();
+});
+
+// --- Files ---
+
+app.get('/api/files', async (req, res) => {
+  try {
+    res.json({
+      configured: files.isConfigured(),
+      maxBytes: files.MAX_BYTES,
+      files: await files.listFiles({
+        clientId: req.query.clientId ? Number(req.query.clientId) : null,
+        projectId: req.query.projectId ? Number(req.query.projectId) : null,
+      }),
+      stats: await files.stats(),
+    });
+  } catch (err) {
+    console.error('Failed to list files:', err);
+    res.status(500).json({ error: 'Could not load files.' });
+  }
+});
+
+// The file arrives as a raw body rather than multipart: the browser can
+// POST a File object directly, which avoids a multipart parser and its
+// dependency entirely. Metadata rides in the query string.
+app.post('/api/files',
+  express.raw({ type: '*/*', limit: files.MAX_BYTES + 1024 }),
+  async (req, res) => {
+    const name = (req.query.name || '').toString().trim();
+    if (!name) return res.status(400).json({ error: 'A filename is required.' });
+    if (!files.isConfigured()) return res.status(503).json({ error: 'File storage is not configured.' });
+    if (!req.body || !req.body.length) return res.status(400).json({ error: 'No file content received.' });
+
+    try {
+      const saved = await files.upload({
+        name: name.slice(0, 200),
+        buffer: req.body,
+        contentType: req.get('content-type'),
+        clientId: req.query.clientId ? Number(req.query.clientId) : null,
+        projectId: req.query.projectId ? Number(req.query.projectId) : null,
+        notes: req.query.notes ? String(req.query.notes).slice(0, 500) : null,
+      });
+      res.status(201).json(saved);
+    } catch (err) {
+      console.error('Upload failed:', err);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+// Streams through the app so every download stays behind the login. A
+// presigned URL would work for anyone holding it, which is the wrong
+// default for client files.
+app.get('/api/files/:id/download', async (req, res) => {
+  try {
+    const result = await files.download(Number(req.params.id));
+    if (!result) return res.status(404).send('Not found.');
+
+    const safeName = String(result.file.name).replace(/[^\w.\- ]+/g, '_').slice(0, 120);
+    res.setHeader('Content-Type', result.file.contentType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(result.buffer);
+  } catch (err) {
+    console.error('Download failed:', err);
+    res.status(502).send('Could not fetch that file.');
+  }
+});
+
+app.delete('/api/files/:id', async (req, res) => {
+  try {
+    const ok = await files.remove(Number(req.params.id));
+    if (!ok) return res.status(404).json({ error: 'Not found.' });
+    res.status(204).end();
+  } catch (err) {
+    console.error('Delete failed:', err);
+    res.status(500).json({ error: 'Could not delete that file.' });
+  }
+});
+
+// Surfaced in Integrations so a misconfigured bucket is visible before
+// someone tries to upload.
+app.get('/api/files/status', async (req, res) => {
+  res.json(await files.check());
 });
 
 // --- People ---

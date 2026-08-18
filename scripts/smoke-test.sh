@@ -208,6 +208,46 @@ else
     || ok "deleting a project clears its calendar entries"
 fi
 
+# ----------------------------------------------------------- files
+
+head_ "Files"
+
+FS=$(api "$BASE_URL/api/files")
+if echo "$FS" | grep -q "\"configured\":true"; then
+  ok "file storage configured"
+
+  ST=$(api "$BASE_URL/api/files/status")
+  echo "$ST" | grep -q "\"ok\":true" && ok "bucket reachable with the configured credentials" \
+    || bad "bucket unreachable" "$(echo "$ST" | head -c 150)"
+
+  # Round-trip an upload, then confirm the bytes come back intact.
+  TMPF=$(mktemp); echo "smoke-test-file-contents" > "$TMPF"
+  UP=$(api -X POST "$BASE_URL/api/files?name=smoke-test.txt" \
+    -H "Content-Type: text/plain" --data-binary @"$TMPF")
+  FID=$(echo "$UP" | grep -o "\"id\":[0-9]*" | head -1 | cut -d: -f2)
+
+  if [ -z "$FID" ]; then
+    bad "upload failed" "$(echo "$UP" | head -c 200)"
+  else
+    ok "file uploaded"
+    DL=$(api "$BASE_URL/api/files/$FID/download")
+    [ "$DL" = "smoke-test-file-contents" ] && ok "download returns the same bytes" \
+      || bad "download mismatch" "got: $(echo "$DL" | head -c 60)"
+
+    # Downloads must force-download, never render in the app origin.
+    HDRS=$(api -D - -o /dev/null "$BASE_URL/api/files/$FID/download")
+    echo "$HDRS" | grep -qi "content-disposition: attachment" \
+      && ok "download forces attachment disposition" || bad "download disposition"
+
+    api -o /dev/null -X DELETE "$BASE_URL/api/files/$FID"
+    api "$BASE_URL/api/files" | grep -q "smoke-test.txt" \
+      && bad "deleted file still listed" || ok "delete removes the file"
+  fi
+  rm -f "$TMPF"
+else
+  bad "file storage not configured" "FILES_* variables missing"
+fi
+
 # ---------------------------------------------------------- people
 
 head_ "People"

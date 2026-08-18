@@ -1,15 +1,17 @@
 # Pocket Data Office
 
-Internal ops app — dashboard, inbox, CRM, projects, service desk, files,
-finance, and people — built to replace the earlier Notion-based mockup.
-No Notion dependency, no AI-agent chat feature. Planned integrations:
-two Outlook inboxes, Outlook Calendar, and Wave.
+Internal ops app — dashboard, inbox, calendar, scheduling, CRM, projects,
+service desk, files, finance, and people — built to replace the earlier
+Notion-based mockup. No Notion dependency, no AI-agent chat feature.
 
-This repo ships the front-end mockup (`/public/index.html`) behind an
-Express server with a real login gate — session-based auth backed by
-Postgres, rate-limited against brute force. The `System spec` tab inside
-the app has the full data model and integration plan for turning this
-into the real thing.
+Every view is backed by real data now; only the `System spec` tab is
+still a static reference page. Mail runs on IMAP/SMTP (Outlook was ruled
+out — see `HANDOFF.md`), the calendar and booking pages are native, files
+live in S3-compatible object storage, and accounting comes from Wave.
+
+The whole thing sits behind an Express login gate — session-based auth
+backed by Postgres, rate-limited against brute force. There is one shared
+login; there are no per-user accounts or permissions anywhere in the app.
 
 ## Run locally
 
@@ -172,6 +174,48 @@ nothing. The mockup had an "Access" column claiming contractors were
 scoped to their projects; that was not reproduced because it would assert
 a security boundary that does not exist. Scoped access needs real
 per-user accounts first.
+
+## Files
+
+Metadata lives in Postgres, the bytes live in S3-compatible object
+storage — Railway Buckets, which run on Tigris. Tag a file to a client or
+project and it surfaces from their page.
+
+Setup is just the `FILES_*` variables; on Railway they come from the
+bucket as reference variables, so nothing is pasted by hand. Uploads are
+disabled and the UI says so if they're missing.
+
+Decisions worth keeping:
+
+- **Uploads and downloads both stream through the app**, not via
+  presigned URLs. A presigned URL works for anyone holding it; routing
+  through the app keeps every byte behind the login.
+- **Object keys are random UUIDs**, never derived from the filename. A
+  user-supplied name in a key invites path traversal and collisions. The
+  real name is just a column.
+- **Uploads arrive as a raw body**, not multipart — the browser POSTs the
+  `File` directly and the server reads it with `express.raw`, which
+  avoids a multipart parser and its dependency entirely.
+- **Delete removes the object first, then the row.** An orphaned object
+  is wasted pennies; an orphaned row is a download that 500s.
+- Downloads force `Content-Disposition: attachment` with `nosniff` and a
+  sanitised filename, same as mail attachments — stored files are
+  untrusted content.
+
+### The backup gap — read this before trusting it with client work
+
+Railway Buckets have **no automatic backups, no versioning, and no object
+lock** (their docs state this). Deleting a file through this app is
+permanent, and there is nothing to restore from.
+
+That is the known, accepted weakness of this choice. Nextcloud or Google
+Drive would have given version history for free; object storage does not.
+If these files start mattering, the fix is a scheduled copy to a second
+provider (Backblaze B2 or Cloudflare R2 — both S3-compatible, so the same
+client code works). That job is **not built yet**.
+
+Storage is billed at $0.015/GB-month with free egress and free API
+operations, so the cost of keeping a second copy is negligible.
 
 ## Detail pages
 

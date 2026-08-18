@@ -110,5 +110,8 @@ The reference includes an **AI Agent** view (chat, agent actions,
 approvals). The project README explicitly rules out an AI-agent chat
 feature — **do not build it**.
 
-It also shows detail pages for clients, tickets and projects, plus
-Projects/Files/People views, which do not exist yet. See `HANDOFF.md`.
+Everything else in the reference is built: detail pages for clients,
+tickets and projects, and the Projects, Files and People views. They
+reuse the tokens and patterns above rather than introducing new ones —
+the Files view is a `.stat-strip` over a plain table, and its upload flow
+is an `openModal` dialog like every other create flow.

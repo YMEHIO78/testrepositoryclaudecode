@@ -41,23 +41,25 @@ lib/google.js          Google Calendar bridge (built, unconnected)
 lib/crm.js             clients, contacts, inbox sender matching
 lib/tickets.js         service desk + SLA-to-calendar projection
 lib/wave.js            Wave GraphQL client (invoices)
+lib/projects.js        projects, tasks, milestone-to-calendar projection
+lib/people.js          the team roster (no permissions - single shared login)
+lib/files.js           file metadata in Postgres, bytes in object storage
 ```
 
 Tables: `session`, `mail_accounts`, `oauth_tokens`, `calendar_events`,
 `app_settings`, `booking_event_types`, `booking_availability`, `bookings`,
-`clients`, `contacts`, `tickets`.
+`clients`, `contacts`, `tickets`, `ticket_events`, `projects`,
+`project_tasks`, `project_milestones`, `people`, `project_people`,
+`files`. Full column-by-column notes in `docs/SCHEMA.md`.
 
 ## What is real vs. still mockup
 
 **Real, working, backed by data:**
 Dashboard · Inbox · Calendar (+ `.ics` feed) · Scheduling · CRM ·
-Service Desk · Finance · Integrations
+Service Desk · Finance · Integrations · Projects · Files · People
 
 **Still hardcoded mockup markup in `public/index.html`:**
-Projects · Files · People · System spec
-
-Each remaining one needs a new data model, not a restyle. Files
-additionally needs a storage integration (OneDrive was the original idea).
+System spec (a static reference page; nothing to wire up)
 
 ## Integrations
 
@@ -68,7 +70,7 @@ additionally needs a storage integration (OneDrive was the original idea).
 | Wave | **live** | via `WAVE_TOKEN` env var; business has 0 invoices so far |
 | Google Calendar | built, unconnected | needs `GOOGLE_CLIENT_ID`/`SECRET`; optional |
 | Outlook mail/calendar | **impossible** | see below |
-| OneDrive / Files | not started | |
+| Files (Railway Buckets) | **live** | S3-compatible; `FILES_*` reference variables |
 
 ### Facts that cost real time to establish — do not re-litigate
 
@@ -97,6 +99,19 @@ additionally needs a storage integration (OneDrive was the original idea).
   field on `User` (`User` exposes only `id`, `defaultEmail`, names).
   `Money.minorUnitValue` is already in cents, matching the app's
   convention everywhere.
+
+- **File storage landed on Railway Buckets, and the alternatives were
+  checked, not guessed.** There is **no `pocketdataoffice.com` OneDrive** —
+  the domain has no Microsoft tenant (same root cause as the Outlook dead
+  end), the machine's `Business1` OneDrive registry key is empty and there
+  is no `OneDrive - <Org>` folder. The user's *personal* OneDrive is
+  Graph-accessible and was ruled out on principle, not capability: client
+  files should not sit in a personal account. **Proton Drive has no public
+  API** at all. Self-hosting (Nextcloud/MinIO on a VPS) works but adds a
+  second server to patch, back up and pay for. Railway Buckets are
+  S3-compatible, sit in the same project, and inject `FILES_*` as
+  reference variables — no credentials pasted by hand. The price is no
+  backup and no version history; see Outstanding work.
 
 ## Design decisions worth preserving
 
@@ -154,17 +169,26 @@ additionally needs a storage integration (OneDrive was the original idea).
 - Consider rotating `WAVE_TOKEN` — it grants access to *every* business on
   the Wave account (including "Personal") and cannot be scoped down.
 
-**Feature gaps in what already works:**
-- Inbox: no search, no pagination (25 most recent per mailbox), no
-  attachment downloads (they are listed but not fetchable), no forward.
-- Unread counts are "unread within the recent window", not true
-  mailbox-wide totals.
-- Tickets: no detail page, no activity log.
-- CRM: no client detail page (the reference design has one, with linked
-  tickets, projects, invoices and emails).
-- Wave: invoices only; expenses are not pulled.
+**Files have no backup — the biggest known hole:**
+- Railway Buckets have no automatic backups, no versioning and no object
+  lock. Deleting a file through the app is permanent and unrecoverable.
+- The intended fix is a scheduled copy to a second S3-compatible provider
+  (Backblaze B2 or Cloudflare R2 — the same `@aws-sdk/client-s3` code
+  works against either). **Not built.**
 
-**Not built at all:** Projects, Files, People.
+**Feature gaps in what already works:**
+- Inbox: no forward. Attachments download; search and pagination work.
+- Unread counts come from IMAP `STATUS (UNSEEN)`, so they are true
+  mailbox-wide totals.
+- Wave: invoices only; expenses are not pulled.
+- Files: no per-file preview, no folders, no drag-and-drop upload. One
+  flat list with client/project tags and a filter.
+- People: deliberately has **no** access or permission column. The app has
+  a single shared login; a permission field would imply enforcement that
+  does not exist.
+
+**Not built at all:** nothing major — every navigation item now has a
+backing data model except the static System spec page.
 
 ## Design reference
 

@@ -185,3 +185,21 @@ everything.
 - **Booking availability is stored in local minutes**, so changing
   `booking_timezone` reinterprets existing hours rather than converting
   them.
+grep -n "### .files." docs/SCHEMA.md
+
+### `files` - stored file metadata
+`name`, `storage_key` (unique; the S3 object key, a random UUID),
+`content_type`, `size_bytes`, `client_id` -> `clients` ON DELETE SET NULL,
+`project_id` -> `projects` ON DELETE SET NULL, `notes`.
+
+Only metadata is here; the bytes are in object storage. The two can drift
+if a delete half-fails, so deletes remove the **object first** and the row
+second - an orphaned object costs pennies, an orphaned row is a broken
+download.
+
+Object keys are never derived from the filename (path traversal,
+collisions). Deleting a client or project leaves its files in place with
+the link nulled, rather than destroying them.
+
+**No backups or versioning exist for the bucket.** Deleting a file
+through the app is permanent.
