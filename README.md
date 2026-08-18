@@ -161,12 +161,40 @@ Beyond listing mail, a message can be opened and worked on:
   linked to the sender's client if they're known, with an SLA date that
   lands on the calendar.
 
+- **Forward** to any address, with the original quoted. Attachments are
+  *not* carried across — only text — and the dialog says so.
+- **Download attachments** from the links in the message header.
+
 Message bodies are fetched only when a message is opened. Downloading
 bodies for the whole list would make the inbox crawl, so the list query
 stays on envelope data.
 
-**Attachments are listed but not downloadable** — the filenames and
-sizes show, wiring up the actual download is still to do.
+### Search and paging
+
+Search is handed to the **IMAP server**, not filtered locally — the
+point is to reach mail that was never downloaded. It matches subject,
+from, to and body, and is debounced so typing doesn't fire a search per
+keystroke.
+
+Paging walks backwards from the newest message in pages of 25.
+**Newer/Older** controls sit under the list.
+
+Unread counts come from IMAP's `STATUS ... (UNSEEN)`, so they are true
+mailbox-wide totals rather than "unread among what happens to be
+loaded". The dashboard's preview list uses a snapshot of the unfiltered
+first page, so paging or searching in the Inbox doesn't make the
+dashboard show search results.
+
+### Attachment downloads
+
+`GET /api/inbox/attachment?account=&uid=&index=` re-fetches and re-parses
+the message to pull one attachment out. That is slower than caching, but
+attachments are rare and a cache would need eviction and its own bugs.
+
+Downloads are forced with `Content-Disposition: attachment` plus
+`X-Content-Type-Options: nosniff`, and the filename is stripped of
+anything path-like. Mail attachments are untrusted; letting the browser
+render one inline would run it in the app's own origin.
 
 ## CRM
 

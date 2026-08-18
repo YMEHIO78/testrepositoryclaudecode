@@ -318,6 +318,9 @@ app.post('/api/mailboxes/disconnect', express.json(), async (req, res) => {
 });
 
 app.get('/api/inbox', async (req, res) => {
+  const page = Math.max(0, Number(req.query.page) || 0);
+  const search = (req.query.q || '').toString().trim();
+
   try {
     const accounts = (await mail.listAccounts())
       .filter((a) => configuredMailboxes().includes(a));
@@ -325,9 +328,15 @@ app.get('/api/inbox', async (req, res) => {
     // Per-account isolation: one mailbox failing (wrong password, server
     // down) shouldn't blank out the others.
     const errors = [];
+    const counts = {};
+    let hasMore = false;
+
     const perAccount = await Promise.all(accounts.map(async (account) => {
       try {
-        return await mail.fetchMessages(account, { limit: 25 });
+        const result = await mail.fetchMessages(account, { limit: 25, page, search });
+        counts[account] = { total: result.total, unseen: result.unseen };
+        if (result.hasMore) hasMore = true;
+        return result.messages;
       } catch (err) {
         console.error(`Failed to load mail for ${account}:`, err);
         errors.push({ account, message: err.message });
@@ -351,10 +360,56 @@ app.get('/api/inbox', async (req, res) => {
       console.error('CRM sender lookup failed:', err.message);
     }
 
-    res.json({ accounts, messages, errors });
+    res.json({ accounts, messages, errors, counts, page, hasMore, search });
   } catch (err) {
     console.error('Failed to load inbox:', err);
     res.status(502).json({ error: 'Failed to load mail.' });
+  }
+});
+
+// Attachment download. Forced to download rather than render — mail
+// attachments are untrusted, and letting the browser display one inline
+// would run it in the app's origin.
+app.get('/api/inbox/attachment', async (req, res) => {
+  const { account, uid, index } = req.query;
+  if (!configuredMailboxes().includes(account) || !uid || index === undefined) {
+    return res.status(400).send('account, uid and index are required.');
+  }
+  try {
+    const att = await mail.getAttachment(account, uid, index);
+    if (!att) return res.status(404).send('Attachment not found.');
+
+    // Strip anything path-like out of the filename before echoing it back.
+    const safeName = String(att.filename).replace(/[^\w.\- ]+/g, '_').slice(0, 120);
+    res.setHeader('Content-Type', att.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(att.content);
+  } catch (err) {
+    console.error('Failed to fetch attachment:', err);
+    res.status(502).send('Could not fetch that attachment.');
+  }
+});
+
+app.post('/api/inbox/forward', express.json(), async (req, res) => {
+  const { account, to, subject, body } = req.body || {};
+  if (!configuredMailboxes().includes(account) || !to || !body) {
+    return res.status(400).json({ error: 'account, to, and body are required.' });
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
+    return res.status(400).json({ error: 'That recipient address does not look valid.' });
+  }
+  try {
+    await mail.sendMail({
+      from: account,
+      to,
+      subject: /^fwd:/i.test(subject || '') ? subject : `Fwd: ${subject || ''}`.trim(),
+      text: body,
+    });
+    res.status(204).end();
+  } catch (err) {
+    console.error('Failed to forward message:', err);
+    res.status(502).json({ error: `Could not forward: ${err.message}` });
   }
 });
 

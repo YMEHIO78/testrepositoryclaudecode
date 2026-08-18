@@ -170,6 +170,35 @@ if echo "$INBOX" | grep -q '"messages"'; then
   ok "inbox loads"
   ERRS=$(echo "$INBOX" | grep -o '"errors":\[[^]]*\]')
   [ "$ERRS" = '"errors":[]' ] && ok "no per-mailbox errors" || bad "mailbox errors present" "$ERRS"
+
+  # Unread must come from IMAP STATUS, not from counting the loaded page.
+  echo "$INBOX" | grep -q '"counts"' && ok "mailbox-wide counts reported" || bad "counts missing"
+
+  # Paging: page 1 must return different messages than page 0.
+  IDS0=$(echo "$INBOX" | grep -o '"id":"[0-9]*"' | head -5 | tr '\n' ' ')
+  P1=$(api "$BASE_URL/api/inbox?page=1")
+  IDS1=$(echo "$P1" | grep -o '"id":"[0-9]*"' | head -5 | tr '\n' ' ')
+  if [ -z "$IDS1" ]; then
+    ok "paging returns empty past the end (small mailbox)"
+  elif [ "$IDS0" = "$IDS1" ]; then
+    bad "paging returned the same messages" "page 0 and page 1 are identical"
+  else
+    ok "paging returns older messages"
+  fi
+
+  # Search is server-side; a nonsense term must narrow, not error.
+  S=$(api "$BASE_URL/api/inbox?q=zzzqqqxxnomatch")
+  if echo "$S" | grep -q '"messages"'; then
+    N=$(echo "$S" | grep -o '"id":"[0-9]*"' | wc -l)
+    [ "$N" -eq 0 ] && ok "search narrows to nothing for a nonsense term" \
+                   || bad "search returned $N results for a nonsense term"
+  else
+    bad "search errored" "$(echo "$S" | head -c 200)"
+  fi
+
+  # Attachment endpoint must validate rather than 500.
+  code=$(api -o /dev/null -w '%{http_code}' "$BASE_URL/api/inbox/attachment?account=nope@example.com&uid=1&index=0")
+  [ "$code" = "400" ] && ok "attachment endpoint rejects unknown mailbox" || bad "attachment validation" "got $code"
 else
   bad "inbox did not load" "$(echo "$INBOX" | head -c 200)"
 fi

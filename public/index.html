@@ -239,7 +239,21 @@
   .inbox-tab.active{background:var(--color-accent-100);color:var(--color-accent);font-weight:600;}
   .inbox-tab .count{font-size:12px;color:var(--color-neutral-500);flex:none;}
   .inbox-tab.active .count{color:var(--color-accent);}
+  .inbox-search{position:relative;}
+  .inbox-search input{width:100%;min-height:34px;padding:6px 28px 6px 10px;font:inherit;font-size:14px;
+    color:var(--color-text);background:var(--color-surface);border:1px solid var(--color-divider);
+    border-radius:var(--radius-md);caret-color:var(--color-accent);}
+  .inbox-search input:focus{outline:2px solid var(--color-accent-100);border-color:var(--color-accent);}
+  .inbox-search button{position:absolute;right:4px;top:50%;transform:translateY(-50%);border:0;background:none;
+    font-size:18px;line-height:1;color:var(--color-neutral-500);cursor:pointer;padding:2px 6px;}
+  .inbox-search button:hover{color:var(--color-accent-2);}
   .inbox-scroll{flex:1;overflow-y:auto;padding:0 22px 22px;}
+  .inbox-pager{display:flex;gap:8px;align-items:center;justify-content:space-between;
+    padding:10px 22px;border-top:1px solid var(--color-divider);font-size:12.5px;color:var(--muted);}
+  .inbox-pager button{border:1px solid var(--color-divider);background:none;border-radius:var(--radius-md);
+    padding:4px 10px;font-family:inherit;font-size:12.5px;color:var(--ink);cursor:pointer;}
+  .inbox-pager button:disabled{opacity:.4;cursor:default;}
+  .inbox-pager button:not(:disabled):hover{border-color:var(--color-accent);color:var(--color-accent);}
   .mail-item{display:flex;flex-direction:column;gap:4px;text-align:left;font-family:inherit;width:100%;
     cursor:pointer;border:0;border-bottom:1px solid rgba(32,30,29,.08);padding:9px 4px 11px 0;background:none;}
   .mail-item:hover{background:var(--color-neutral-200);}
@@ -469,9 +483,14 @@
       <div class="inbox-list">
         <div class="inbox-list-head">
           <h1>Inbox</h1>
+          <div class="inbox-search">
+            <input type="search" id="inboxSearch" placeholder="Search mail…" autocomplete="off">
+            <button type="button" id="inboxSearchClear" class="hidden" title="Clear search">×</button>
+          </div>
           <div id="inboxTabs" class="inbox-tabs"></div>
         </div>
         <div class="inbox-scroll" id="inboxMessages"></div>
+        <div class="inbox-pager" id="inboxPager"></div>
       </div>
       <div class="inbox-detail" id="inboxDetail">
         <p class="msg-snippet">Select a message to read it.</p>
@@ -1080,6 +1099,10 @@
 
   document.getElementById('finRefresh')?.addEventListener('click', loadFinance);
 
+  // Snapshot of the newest page, so the dashboard preview is stable
+  // regardless of how the inbox is paged or filtered.
+  let dashMailSnapshot = null;
+
   // --- Dashboard ---
   // Composed from state the other views already loaded rather than its own
   // endpoint, so opening the app doesn't trigger a second round of IMAP and
@@ -1092,7 +1115,13 @@
     const partOfDay = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
     greetEl.textContent = `Good ${partOfDay}.`;
 
-    const unread = inboxData.messages.filter(m => !m.isRead);
+    // Count comes from the server's mailbox-wide UNSEEN, not from the
+    // loaded page — otherwise paging or searching would change it. The
+    // preview list uses a snapshot taken on page 0 with no search, so the
+    // dashboard never ends up showing search results.
+    const unreadCount = Object.values(inboxData.counts || {})
+      .reduce((s, c) => s + (c.unseen || 0), 0);
+    const unread = (dashMailSnapshot || []).filter(m => !m.isRead);
     const openTickets = tkData.tickets.filter(t => !['resolved','closed'].includes(t.status));
     const dueSoon = openTickets.filter(t => t.slaDueAt &&
       new Date(t.slaDueAt) - Date.now() < 24*3600*1000);
@@ -1112,7 +1141,7 @@
     const dateLine = today.toLocaleDateString(undefined,
       { weekday:'long', day:'numeric', month:'long', year:'numeric' });
     const bits = [];
-    if (unread.length) bits.push(`${unread.length} email${unread.length===1?'':'s'} unread`);
+    if (unreadCount) bits.push(`${unreadCount} email${unreadCount===1?'':'s'} unread`);
     if (dueSoon.length) bits.push(`${dueSoon.length} ticket${dueSoon.length===1?'':'s'} breaching SLA within a day`);
     if (todays.length) bits.push(`${todays.length} thing${todays.length===1?'':'s'} on today's calendar`);
     document.getElementById('dashSub').textContent =
@@ -1126,7 +1155,7 @@
       </div>
       <div class="stat-cell">
         <span class="label">Unread email</span>
-        <span class="value accent">${unread.length}</span>
+        <span class="value accent">${unreadCount}</span>
         <span class="note">across ${inboxData.accounts.length} connected inbox${inboxData.accounts.length===1?'':'es'}</span>
       </div>
       <div class="stat-cell">
@@ -1251,16 +1280,20 @@
   // The list stays put on the left and the selected message fills the
   // pane on the right, matching the reference. Bodies are fetched on
   // selection, so the list itself stays fast.
-  let inboxData = { accounts: [], messages: [], errors: [] };
+  let inboxData = { accounts: [], messages: [], errors: [], counts: {} };
   let inboxFilter = '';        // '' = all mailboxes
   let selectedMailId = null;   // `${account}:${uid}`
+  let inboxPage = 0;
+  let inboxSearch = '';
 
   function mailKey(m){ return `${m.account}:${m.id}`; }
 
   function renderInboxTabs(){
     const wrap = document.getElementById('inboxTabs');
-    const unreadFor = (acct) => inboxData.messages
-      .filter(m => (!acct || m.account === acct) && !m.isRead).length;
+    // Server-reported mailbox-wide unread, not "unread among what loaded".
+    const unreadFor = (acct) => acct
+      ? (inboxData.counts?.[acct]?.unseen ?? 0)
+      : Object.values(inboxData.counts || {}).reduce((s, c) => s + (c.unseen || 0), 0);
 
     const tabs = [{ key: '', label: 'All mail' }]
       .concat(inboxData.accounts.map(a => ({ key: a, label: a })));
@@ -1270,6 +1303,28 @@
         <span>${escapeHtml(t.label)}</span>
         <span class="count">${unreadFor(t.key) || ''}</span>
       </button>`).join('');
+  }
+
+  function renderInboxPager(){
+    const wrap = document.getElementById('inboxPager');
+    if (!inboxData.accounts.length) { wrap.innerHTML = ''; return; }
+
+    const shown = inboxData.messages.length;
+    const label = inboxSearch
+      ? `${shown} result${shown === 1 ? '' : 's'} on this page`
+      : `page ${inboxPage + 1}`;
+
+    wrap.innerHTML = `
+      <button type="button" id="inboxPrev" ${inboxPage === 0 ? 'disabled' : ''}>Newer</button>
+      <span>${escapeHtml(label)}</span>
+      <button type="button" id="inboxNext" ${inboxData.hasMore ? '' : 'disabled'}>Older</button>`;
+
+    document.getElementById('inboxPrev').onclick = () => {
+      if (inboxPage > 0) { inboxPage--; loadInbox(); }
+    };
+    document.getElementById('inboxNext').onclick = () => {
+      if (inboxData.hasMore) { inboxPage++; loadInbox(); }
+    };
   }
 
   function renderInboxList(){
@@ -1303,19 +1358,47 @@
   }
 
   async function loadInbox(){
+    const wrap = document.getElementById('inboxMessages');
+    wrap.innerHTML = '<p class="msg-snippet" style="padding-top:12px;">Loading…</p>';
     try {
-      const res = await fetch('/api/inbox');
+      const params = new URLSearchParams();
+      if (inboxPage) params.set('page', String(inboxPage));
+      if (inboxSearch) params.set('q', inboxSearch);
+      const res = await fetch(`/api/inbox${params.toString() ? '?' + params : ''}`);
       if (!res.ok) throw new Error('request failed');
       inboxData = await res.json();
     } catch (err) {
-      document.getElementById('inboxMessages').innerHTML =
-        '<p class="msg-snippet" style="padding-top:12px;">Could not load mail right now.</p>';
+      wrap.innerHTML = '<p class="msg-snippet" style="padding-top:12px;">Could not load mail right now.</p>';
       return;
     }
+    // Only the unfiltered first page is representative of "newest mail".
+    if (!inboxPage && !inboxSearch) dashMailSnapshot = inboxData.messages;
+
     renderInboxTabs();
     renderInboxList();
+    renderInboxPager();
     renderDashboard();
   }
+
+  // Debounced so typing doesn't fire an IMAP search per keystroke.
+  let searchTimer = null;
+  document.getElementById('inboxSearch').addEventListener('input', (e) => {
+    const value = e.target.value.trim();
+    document.getElementById('inboxSearchClear').classList.toggle('hidden', !value);
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      if (value === inboxSearch) return;
+      inboxSearch = value;
+      inboxPage = 0;
+      loadInbox();
+    }, 450);
+  });
+
+  document.getElementById('inboxSearchClear').addEventListener('click', () => {
+    document.getElementById('inboxSearch').value = '';
+    document.getElementById('inboxSearchClear').classList.add('hidden');
+    if (inboxSearch) { inboxSearch = ''; inboxPage = 0; loadInbox(); }
+  });
 
   document.getElementById('inboxTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.inbox-tab');
@@ -1370,12 +1453,17 @@
           Linked client: ${msg.client
             ? `<span style="color:var(--color-accent);">${escapeHtml(msg.client.name)}</span>`
             : '<span>none</span>'}
-          · Attachments: ${msg.attachments.length ? escapeHtml(msg.attachments.map(a => a.filename).join(', ')) : 'none'}
+          · Attachments: ${msg.attachments.length
+            ? msg.attachments.map((a, i) =>
+                `<a href="/api/inbox/attachment?account=${encodeURIComponent(msg.account)}&uid=${encodeURIComponent(msg.id)}&index=${i}"
+                    download>${escapeHtml(a.filename)}</a>`).join(', ')
+            : 'none'}
         </div>
       </div>
       <div class="mail-read" id="mailRead"></div>
       <div class="mail-actions">
         <button type="button" class="primary" data-act="reply">Reply</button>
+        <button type="button" data-act="forward">Forward</button>
         <button type="button" data-act="ticket">Create ticket</button>
         ${msg.client
           ? '<button type="button" data-act="viewclient">View client</button>'
@@ -1411,6 +1499,8 @@
         renderMailBody(msg, document.getElementById('mailRead'), showingHtml);
       } else if (act === 'reply') {
         openReply(msg);
+      } else if (act === 'forward') {
+        openForward(msg);
       } else if (act === 'unread') {
         await fetch('/api/inbox/read', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1497,6 +1587,54 @@
         setTimeout(() => { wrap.innerHTML = ''; }, 1200);
       } catch (err) {
         status.textContent = err.message || 'Failed to send — try again.';
+      }
+    };
+  }
+
+  function openForward(msg){
+    const quoted = [
+      '', '---------- Forwarded message ----------',
+      `From: ${msg.from} <${msg.fromAddress}>`,
+      msg.date ? `Date: ${new Date(msg.date).toLocaleString()}` : '',
+      `Subject: ${msg.subject}`,
+      '', (msg.text || '(no plain-text body)'),
+    ].filter(Boolean).join('\n');
+
+    const modal = openModal({
+      kicker: 'Forward',
+      title: msg.subject,
+      body: `
+        <label>To</label>
+        <input type="email" id="fwTo" placeholder="someone@example.com">
+        <label>Message</label>
+        <textarea id="fwBody" style="min-height:220px;"></textarea>
+        ${msg.attachments.length
+          ? `<p class="msg-snippet" style="margin-top:var(--space-2);">Note: the ${msg.attachments.length} attachment(s) are <b>not</b> forwarded — only the text. Download and re-attach them if needed.</p>`
+          : ''}`,
+      actions: actionButtons('Send'),
+    });
+
+    document.getElementById('fwBody').value = quoted;
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const to = document.getElementById('fwTo').value.trim();
+      const body = document.getElementById('fwBody').value.trim();
+      if (!to) { modalStatus('Who should it go to?'); return; }
+      if (!body) { modalStatus('The message is empty.'); return; }
+      modalStatus('Sending…');
+      try {
+        const res = await fetch('/api/inbox/forward', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account: msg.account, to, subject: msg.subject, body }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Could not forward.');
+        }
+        closeModal();
+        showBanner(`Forwarded to ${to}.`, 'ok');
+      } catch (err) {
+        modalStatus(err.message);
       }
     };
   }
