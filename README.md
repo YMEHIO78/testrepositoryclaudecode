@@ -255,17 +255,21 @@ a gigabyte moved in each direction costs about a dime. It would stop being
 a rounding error if files were ever served at scale to the public, which
 is not what this is for.
 
-Plan limits: this workspace is on **Hobby**, whose enforced ceiling is
-**50 GB of bucket storage across the workspace** and 3 buckets per
-project. (The public docs page says Hobby allows 1 TB; the API reports 50
+Plan limits: Railway's plan-limits API reports this workspace as **Hobby**
+($5/month of included usage), though the owner believes it is on the Free
+plan. Worth confirming in the dashboard, because the two plans behave
+very differently when usage runs out — see below. Hobby's enforced
+ceiling is **50 GB of bucket storage across the workspace**, with 3
+buckets per project. (The public docs page says Hobby allows 1 TB; the API reports 50
 GB as the actual enforced limit for this account. Trust the API.) At the
 ceiling the bucket could cost at most $0.75/month, and Hobby already
 includes $5/month of usage, so realistically this line never shows up.
 
-If the account is ever downgraded to Free, note that bucket usage counts
-against the $1 monthly credit and **access is suspended when that runs
-out** — files become unreadable until the next cycle, though they are not
-deleted.
+On the **Free** plan the allowance is 10 GB-month, bucket usage counts
+against a $1 monthly credit, and **access is suspended once that credit is
+spent** — every stored file becomes unreadable until the next billing
+cycle. They are not deleted, but the Files view goes dark. If this app is
+really on Free, that is a live operational risk, not a theoretical one.
 
 ## Detail pages
 
