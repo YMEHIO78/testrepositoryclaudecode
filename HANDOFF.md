@@ -43,6 +43,7 @@ lib/tickets.js         service desk + SLA-to-calendar projection
 lib/wave.js            Wave GraphQL client (invoices)
 lib/projects.js        projects, tasks, milestone-to-calendar projection
 lib/people.js          the team roster (no permissions - single shared login)
+lib/packages.js        packages and quantities; client value is derived, never stored
 lib/files.js           file metadata in Postgres, bytes in object storage
 lib/folders.js         the folder tree; deleting one reparents, never cascades
 ```
@@ -51,7 +52,7 @@ Tables: `session`, `mail_accounts`, `oauth_tokens`, `calendar_events`,
 `app_settings`, `booking_event_types`, `booking_availability`, `bookings`,
 `clients`, `contacts`, `tickets`, `ticket_events`, `projects`,
 `project_tasks`, `project_milestones`, `people`, `project_people`,
-`files`, `folders`. Full column-by-column notes in `docs/SCHEMA.md`.
+`files`, `folders`, `packages`, `client_packages`. Full column-by-column notes in `docs/SCHEMA.md`.
 
 ## What is real vs. still mockup
 

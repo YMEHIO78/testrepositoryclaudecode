@@ -388,6 +388,48 @@ Downloads are forced with `Content-Disposition: attachment` plus
 anything path-like. Mail attachments are untrusted; letting the browser
 render one inline would run it in the app's own origin.
 
+## Packages
+
+What you sell and what a unit of it costs. **A client's value is the sum
+of unit price times quantity across their packages** — it is not typed in
+anywhere, and the Value field that used to be in the client editor is
+gone.
+
+On a client's page, a **Packages & quantities** section shows a row per
+package with a −/+ stepper, a subtotal, and a total labelled Client
+value. This is the design reference's model, and its caption there says
+it plainly: quantities drive the contract value.
+
+Seeded once with the reference's three — Manual Data at $220 per batch of
+500 records, Data Warehousing at $4,200 per environment per quarter, Data
+Analysis at $950 per analysis workstream. **Edit them under Back office →
+Packages**; they are not hardcoded. A price change is a business event,
+not a deploy.
+
+Decisions worth keeping:
+
+- **The value is computed on read, never stored.** A cached total needs
+  invalidating on every price change, and the first missed invalidation is
+  a wrong number on an invoice. The flip side is that repricing a package
+  moves every client carrying it, immediately — that is intended, and the
+  editor warns you when the package is in use.
+- **The stepper sends an absolute quantity, not a delta.** A double click
+  or a retried request cannot compound into money nobody chose.
+- **The server returns the recalculated set and the browser paints from
+  it.** The front end never computes a figure it then displays as
+  authoritative.
+- **A package on a client retires rather than deletes.** Deleting would
+  cascade its quantities away and silently reduce that client's value.
+  Retiring hides it from new work and leaves every existing figure alone.
+  A package nothing references deletes outright.
+- **Seeding is guarded by a flag, not by an empty table.** Deliberately
+  deleting every package is a legitimate state and must not be undone on
+  the next boot.
+
+The old typed value survives as `legacyValueCents` and is shown on the
+client page until quantities replace it, so nothing vanished on deploy
+day. See `docs/SCHEMA.md`.
+
 ## Clients & Leads
 
 Real clients and contacts, replacing the mockup table. Built first
@@ -615,6 +657,7 @@ lib/tickets.js          service desk, including SLA-to-calendar projection
 lib/wave.js             Wave GraphQL client: invoices into Finance
 lib/projects.js         projects, tasks, milestone-to-calendar projection
 lib/people.js           the team roster
+lib/packages.js         service packages; client value is derived from these
 lib/files.js            file metadata in Postgres, bytes in object storage
 lib/folders.js          the folder tree; deleting one reparents, never cascades
 scripts/smoke-test.sh   regression checks against a running instance

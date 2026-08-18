@@ -233,3 +233,40 @@ to destroy a client's documents. A smoke test asserts the file survives.
 
 `files.folder_id` is `ON DELETE SET NULL` for the same reason — the
 belt to that braces.
+
+### `packages` and `client_packages`
+
+What you sell, and how much of it each client has. Together they replace
+the typed `clients.value_cents`.
+
+| Table | Notes |
+|---|---|
+| `packages` | `unit_cents` (integer cents), `unit_note` ("per environment, per quarter"), `active`, `sort_order` |
+| `client_packages` | composite PK `(client_id, package_id)`, `quantity`; both FKs cascade |
+
+**A client's value is never stored.** It is
+`SUM(packages.unit_cents * client_packages.quantity)` computed on read,
+via `valueFor(id)` for one client and `valuesByClient()` for a list. A
+cached total would need invalidating on every price change, and the first
+missed invalidation is a wrong number on an invoice. There is nothing to
+drift because there is only one copy.
+
+Consequence worth knowing: **repricing a package immediately changes the
+value of every client carrying it.** That is the intent, and the package
+editor says so when the package is in use.
+
+`clients.value_cents` still exists and holds whatever was typed before
+packages. It is exposed as `legacyValueCents`, shown on the client page
+until quantities replace it. Its `UPDATE` uses `COALESCE` so an unrelated
+edit cannot null it — the editor no longer sends the field, and a bare
+assignment would have destroyed the old figure on the next save.
+
+Packages are seeded once from the design reference, guarded by an
+`app_settings` flag rather than "insert if the table is empty". An empty
+package list is a legitimate state and must not be silently refilled on
+the next boot.
+
+Deleting a package that any client carries would cascade its quantities
+away and quietly reduce that client's value, so `removePackage` retires it
+(`active = false`) instead and only hard-deletes when nothing references
+it. Same reasoning as folders: nothing here is backed up.
