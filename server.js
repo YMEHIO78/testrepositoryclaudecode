@@ -787,7 +787,7 @@ app.get('/api/files', async (req, res) => {
   }
 });
 
-app.post('/api/folders', async (req, res) => {
+app.post('/api/folders', express.json(), async (req, res) => {
   try {
     const { name, clientId, parentId } = req.body || {};
     res.status(201).json(await folders.createFolder({
@@ -800,7 +800,7 @@ app.post('/api/folders', async (req, res) => {
   }
 });
 
-app.patch('/api/folders/:id', async (req, res) => {
+app.patch('/api/folders/:id', express.json(), async (req, res) => {
   try {
     const folder = await folders.renameFolder(Number(req.params.id), (req.body || {}).name);
     if (!folder) return res.status(404).json({ error: 'Not found.' });

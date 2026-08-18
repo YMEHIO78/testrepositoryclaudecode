@@ -269,9 +269,11 @@ else
 
   # Re-creating the same name must reuse, not duplicate — this is what
   # makes re-uploading a folder idempotent instead of stacking copies.
+  # The -n guard matters: without it, two empty ids compare equal and this
+  # check passes while folder creation is completely broken. It did.
   F1B=$(mkfolder "{\"name\":\"contracts\",\"clientId\":$CLFID}")
-  [ "$F1" = "$F1B" ] && ok "same folder name reuses the existing folder" \
-    || bad "duplicate folder created" "got $F1B, expected $F1"
+  [ -n "$F1B" ] && [ "$F1" = "$F1B" ] && ok "same folder name reuses the existing folder" \
+    || bad "duplicate folder created" "got '$F1B', expected '$F1'"
 
   F2=$(mkfolder "{\"name\":\"2026\",\"parentId\":$F1}")
   [ -n "$F2" ] && ok "nested folder created" || bad "nesting"

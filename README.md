@@ -218,6 +218,44 @@ Decisions worth keeping:
   sanitised filename, same as mail attachments — stored files are
   untrusted content.
 
+### Folders
+
+The Files view has two modes, and the client selector switches between
+them:
+
+- **All clients** — a flat list of every file. The "where did that go"
+  view. No folders are shown, because a folder belongs to a client and
+  showing every client's folders at once means nothing.
+- **A client selected** — a folder browser scoped to them, with a
+  breadcrumb. Files sitting outside any folder appear at the top level.
+
+You can create folders in the app, nest them up to ten deep, rename them,
+and upload straight into whichever one you're looking at. **Upload folder**
+picks a directory off your machine and recreates its structure here.
+
+How the folder upload works: the browser hands each file a
+`webkitRelativePath` like `Marlowe/2026/report.pdf`. The client sends the
+directory part as `?path=` alongside the file, and the server builds the
+chain, reusing any folder that already exists. That means the browser
+does not have to make a round of folder calls first and then upload
+against ids, and re-uploading the same folder does not stack duplicates.
+
+Uploads run **sequentially**, one request per file, each carrying a whole
+body. Firing hundreds in parallel would only queue in the browser and
+make failures harder to attribute. Partial failure is reported honestly —
+"41 uploaded, 6 failed" with the reasons — because a connection dropping
+halfway through a large folder is the normal bad case, not an edge case.
+
+**Deleting a folder does not delete files.** Its contents move up a level
+instead. Given that nothing here is backed up, one click should not be
+able to destroy a client's documents; the confirm dialog says so, and a
+smoke test asserts the file is still downloadable afterwards.
+
+Folder names are sanitised on the way in — they come from directory names
+on someone's disk, which is untrusted input. Control characters are
+dropped and path separators become dashes, so a name can never be read as
+a path.
+
 ### The backup gap — read this before trusting it with client work
 
 Railway Buckets have **no automatic backups, no versioning, and no object
@@ -566,6 +604,10 @@ lib/scheduling.js       booking pages: availability, slot maths, bookings
 lib/crm.js              clients, contacts, and inbox sender matching
 lib/tickets.js          service desk, including SLA-to-calendar projection
 lib/wave.js             Wave GraphQL client: invoices into Finance
+lib/projects.js         projects, tasks, milestone-to-calendar projection
+lib/people.js           the team roster
+lib/files.js            file metadata in Postgres, bytes in object storage
+lib/folders.js          the folder tree; deleting one reparents, never cascades
 scripts/smoke-test.sh   regression checks against a running instance
 docs/SCHEMA.md          tables and relationships
 docs/DESIGN.md          design tokens and layout specs

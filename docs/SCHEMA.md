@@ -203,3 +203,33 @@ the link nulled, rather than destroying them.
 
 **No backups or versioning exist for the bucket.** Deleting a file
 through the app is permanent.
+
+### `folders`
+
+The folder tree for the Files module. Folders exist **only here** — the
+bucket has no folders, and an object's key is a random UUID carrying no
+path at all. That is what lets an empty folder exist, and why renaming
+one touches nothing in storage.
+
+| Column | Notes |
+|---|---|
+| `name` | sanitised on the way in: control characters dropped, `/` and `\` become `-`, capped at 100 chars |
+| `client_id` | `ON DELETE CASCADE` — a client's folders go with them |
+| `parent_id` | self-reference, `ON DELETE SET NULL`; nesting capped at 10 by the application |
+
+A subfolder always inherits its parent's `client_id`, so a folder cannot
+escape its client by being nested under one belonging to someone else.
+
+Creating a folder whose name already exists in the same place returns the
+existing row instead of inserting a second one. That is what makes
+re-uploading a folder idempotent rather than producing three folders
+called `Reports`.
+
+**Deleting a folder never deletes files.** `deleteFolder` reparents the
+folder's files and subfolders to its parent inside a transaction, then
+removes the row. The cascade would have been simpler, but nothing in this
+app is backed up (see `HANDOFF.md`), so a single click must not be able
+to destroy a client's documents. A smoke test asserts the file survives.
+
+`files.folder_id` is `ON DELETE SET NULL` for the same reason — the
+belt to that braces.

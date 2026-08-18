@@ -44,13 +44,14 @@ lib/wave.js            Wave GraphQL client (invoices)
 lib/projects.js        projects, tasks, milestone-to-calendar projection
 lib/people.js          the team roster (no permissions - single shared login)
 lib/files.js           file metadata in Postgres, bytes in object storage
+lib/folders.js         the folder tree; deleting one reparents, never cascades
 ```
 
 Tables: `session`, `mail_accounts`, `oauth_tokens`, `calendar_events`,
 `app_settings`, `booking_event_types`, `booking_availability`, `bookings`,
 `clients`, `contacts`, `tickets`, `ticket_events`, `projects`,
 `project_tasks`, `project_milestones`, `people`, `project_people`,
-`files`. Full column-by-column notes in `docs/SCHEMA.md`.
+`files`, `folders`. Full column-by-column notes in `docs/SCHEMA.md`.
 
 ## What is real vs. still mockup
 
@@ -215,8 +216,9 @@ System spec (a static reference page; nothing to wire up)
 - Unread counts come from IMAP `STATUS (UNSEEN)`, so they are true
   mailbox-wide totals.
 - Wave: invoices only; expenses are not pulled.
-- Files: no per-file preview, no folders, no drag-and-drop upload. One
-  flat list with client/project tags and a filter.
+- Files: folders, folder upload and per-client browsing all work. Still
+  missing: per-file preview, drag-and-drop onto the page, and moving a
+  file between folders after upload.
 - People: deliberately has **no** access or permission column. The app has
   a single shared login; a permission field would imply enforcement that
   does not exist.
