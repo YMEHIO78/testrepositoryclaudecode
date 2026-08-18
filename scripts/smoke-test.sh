@@ -248,6 +248,75 @@ else
   bad "file storage not configured" "FILES_* variables missing"
 fi
 
+# --------------------------------------------------------- folders
+
+head_ "Folders"
+
+CLF=$(api -X POST "$BASE_URL/api/crm/clients" -H 'Content-Type: application/json' \
+  -d '{"name":"Smoke Folder Co","stage":"client"}')
+CLFID=$(echo "$CLF" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+if [ -z "$CLFID" ]; then
+  bad "could not create client for folder tests" "$CLF"
+else
+  mkfolder() {
+    api -X POST "$BASE_URL/api/folders" -H 'Content-Type: application/json' -d "$1" \
+      | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2
+  }
+
+  F1=$(mkfolder "{\"name\":\"Contracts\",\"clientId\":$CLFID}")
+  [ -n "$F1" ] && ok "folder created" || bad "folder creation"
+
+  # Re-creating the same name must reuse, not duplicate — this is what
+  # makes re-uploading a folder idempotent instead of stacking copies.
+  F1B=$(mkfolder "{\"name\":\"contracts\",\"clientId\":$CLFID}")
+  [ "$F1" = "$F1B" ] && ok "same folder name reuses the existing folder" \
+    || bad "duplicate folder created" "got $F1B, expected $F1"
+
+  F2=$(mkfolder "{\"name\":\"2026\",\"parentId\":$F1}")
+  [ -n "$F2" ] && ok "nested folder created" || bad "nesting"
+
+  # A file placed directly in the folder, and one placed via a path that
+  # has to be built on the fly (the folder-upload route).
+  TMPA=$(mktemp); echo "file-in-folder" > "$TMPA"
+  FA=$(api -X POST "$BASE_URL/api/files?name=in-folder.txt&clientId=$CLFID&folderId=$F1" \
+    -H "Content-Type: text/plain" --data-binary @"$TMPA" \
+    | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+  FB=$(api -X POST "$BASE_URL/api/files?name=deep.txt&clientId=$CLFID&folderId=$F1&path=Deep" \
+    -H "Content-Type: text/plain" --data-binary @"$TMPA" \
+    | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+  rm -f "$TMPA"
+  [ -n "$FA" ] && [ -n "$FB" ] && ok "files uploaded into folders" || bad "upload into folder"
+
+  ROOT=$(api "$BASE_URL/api/files?clientId=$CLFID&folder=root")
+  echo "$ROOT" | grep -q '"name":"Contracts"' && ok "root lists the folder" || bad "root folder listing"
+  echo "$ROOT" | grep -q '"files":\[\]' && ok "files inside folders stay out of the root" \
+    || bad "root listing leaked nested files"
+
+  INSIDE=$(api "$BASE_URL/api/files?clientId=$CLFID&folder=$F1")
+  echo "$INSIDE" | grep -q 'in-folder.txt' && ok "folder lists its own file" || bad "folder file listing"
+  echo "$INSIDE" | grep -q '"name":"Deep"' && ok "upload path created the subfolder" \
+    || bad "path-based folder creation"
+
+  CRUMB=$(api "$BASE_URL/api/files?clientId=$CLFID&folder=$F2")
+  echo "$CRUMB" | grep -q '"breadcrumb":\[{"id":'"$F1" && ok "breadcrumb starts at the top folder" \
+    || bad "breadcrumb" "$(echo "$CRUMB" | head -c 150)"
+
+  # Deleting a folder must never destroy files. Nothing here is backed up,
+  # so this is the check that matters most in this section.
+  DELF=$(api -X DELETE "$BASE_URL/api/folders/$F1")
+  echo "$DELF" | grep -q '"movedFiles":1' && ok "deleting a folder moves its file up a level" \
+    || bad "folder delete moved the wrong number of files" "$DELF"
+
+  code=$(api -o /dev/null -w '%{http_code}' "$BASE_URL/api/files/$FA/download")
+  [ "$code" = "200" ] && ok "the file survived its folder being deleted" \
+    || bad "file lost with its folder" "got $code"
+
+  api -o /dev/null -X DELETE "$BASE_URL/api/files/$FA"
+  api -o /dev/null -X DELETE "$BASE_URL/api/files/$FB"
+  api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$CLFID"
+fi
+
 # ---------------------------------------------------------- people
 
 head_ "People"

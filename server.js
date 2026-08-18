@@ -21,6 +21,7 @@ const wave = require('./lib/wave');
 const projects = require('./lib/projects');
 const people = require('./lib/people');
 const files = require('./lib/files');
+const folders = require('./lib/folders');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -618,13 +619,21 @@ app.get('/api/crm/clients/:id/detail', async (req, res) => {
     const client = await crm.getClient(Number(req.params.id));
     if (!client) return res.status(404).json({ error: 'Not found.' });
 
-    const detail = { client, tickets: [], emails: [], invoices: [], warnings: [] };
+    const detail = { client, tickets: [], emails: [], invoices: [], files: [], warnings: [] };
 
     try {
       const all = await tickets.listTickets({ openOnly: false });
       detail.tickets = all.filter((t) => t.clientId === client.id);
     } catch (err) {
       detail.warnings.push(`Tickets unavailable: ${err.message}`);
+    }
+
+    try {
+      // Every file for this client regardless of folder — the point of the
+      // client page is "show me everything", not "browse the tree".
+      detail.files = await files.listFiles({ clientId: client.id });
+    } catch (err) {
+      detail.warnings.push(`Files unavailable: ${err.message}`);
     }
 
     const addresses = client.contacts.map((c) => c.email).filter(Boolean);
@@ -743,20 +752,74 @@ app.delete('/api/crm/contacts/:id', async (req, res) => {
 
 // --- Files ---
 
+// `folder` is tri-state: absent means every file in scope (what a client's
+// page wants), "root" means only files sitting outside any folder, and an
+// id means that folder's contents.
+function folderFilter(value) {
+  if (value === undefined || value === '') return undefined;
+  if (value === 'root') return null;
+  return Number(value);
+}
+
 app.get('/api/files', async (req, res) => {
   try {
+    const clientId = req.query.clientId ? Number(req.query.clientId) : null;
+    const folderId = folderFilter(req.query.folder);
+
     res.json({
       configured: files.isConfigured(),
       maxBytes: files.MAX_BYTES,
+      maxDepth: folders.MAX_DEPTH,
       files: await files.listFiles({
-        clientId: req.query.clientId ? Number(req.query.clientId) : null,
+        clientId,
         projectId: req.query.projectId ? Number(req.query.projectId) : null,
+        folderId,
       }),
+      folders: folderId === undefined
+        ? []
+        : await folders.listFolders({ clientId: clientId || null, parentId: folderId }),
+      breadcrumb: folderId ? await folders.breadcrumb(folderId) : [],
       stats: await files.stats(),
     });
   } catch (err) {
     console.error('Failed to list files:', err);
     res.status(500).json({ error: 'Could not load files.' });
+  }
+});
+
+app.post('/api/folders', async (req, res) => {
+  try {
+    const { name, clientId, parentId } = req.body || {};
+    res.status(201).json(await folders.createFolder({
+      name,
+      clientId: clientId ? Number(clientId) : null,
+      parentId: parentId ? Number(parentId) : null,
+    }));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.patch('/api/folders/:id', async (req, res) => {
+  try {
+    const folder = await folders.renameFolder(Number(req.params.id), (req.body || {}).name);
+    if (!folder) return res.status(404).json({ error: 'Not found.' });
+    res.json(folder);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Deleting a folder moves its contents up rather than destroying them.
+// The response says how many files moved so the UI can be honest about it.
+app.delete('/api/folders/:id', async (req, res) => {
+  try {
+    const result = await folders.deleteFolder(Number(req.params.id));
+    if (!result) return res.status(404).json({ error: 'Not found.' });
+    res.json(result);
+  } catch (err) {
+    console.error('Could not delete folder:', err);
+    res.status(500).json({ error: 'Could not delete that folder.' });
   }
 });
 
@@ -772,12 +835,23 @@ app.post('/api/files',
     if (!req.body || !req.body.length) return res.status(400).json({ error: 'No file content received.' });
 
     try {
+      const clientId = req.query.clientId ? Number(req.query.clientId) : null;
+
+      // A folder upload sends the file's directory path alongside it and
+      // lets the server build the chain, rather than the browser making a
+      // round of folder calls first and then uploading against ids.
+      let folderId = req.query.folderId ? Number(req.query.folderId) : null;
+      if (req.query.path) {
+        folderId = await folders.ensurePath(req.query.path, { clientId, parentId: folderId });
+      }
+
       const saved = await files.upload({
         name: name.slice(0, 200),
         buffer: req.body,
         contentType: req.get('content-type'),
-        clientId: req.query.clientId ? Number(req.query.clientId) : null,
+        clientId,
         projectId: req.query.projectId ? Number(req.query.projectId) : null,
+        folderId,
         notes: req.query.notes ? String(req.query.notes).slice(0, 500) : null,
       });
       res.status(201).json(saved);
