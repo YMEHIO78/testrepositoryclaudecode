@@ -175,7 +175,7 @@ scoped to their projects; that was not reproduced because it would assert
 a security boundary that does not exist. Scoped access needs real
 per-user accounts first.
 
-## Files
+## Files & Folders
 
 Metadata lives in Postgres, the bytes live in S3-compatible object
 storage — Railway Buckets, which run on Tigris. Tag a file to a client or

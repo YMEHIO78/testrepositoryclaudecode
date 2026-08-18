@@ -467,7 +467,7 @@
       <button class="nav-btn" data-view="crm">CRM &amp; Leads <span class="nav-badge">14</span></button>
       <button class="nav-btn" data-view="projects">Projects</button>
       <button class="nav-btn" data-view="tickets">Service Desk <span class="nav-badge">5</span></button>
-      <button class="nav-btn" data-view="files">Files</button>
+      <button class="nav-btn" data-view="files">Files &amp; Folders</button>
     </div>
 
     <div class="nav-group">
@@ -714,7 +714,7 @@
 
     <!-- ================= FILES ================= -->
     <div class="view hidden" id="view-files">
-      <h1>Files</h1>
+      <h1>Files &amp; Folders</h1>
       <p class="sub">Stored in this app's object storage and served through it, so every download stays behind the login. Browse folders here, or pick a client to narrow it to theirs.</p>
 
       <div class="stat-strip" id="filesStats"></div>
@@ -2410,7 +2410,7 @@
   function openFolderDialog(existing){
     const here = (filesData.breadcrumb || []).slice(-1)[0];
     const modal = openModal({
-      kicker: 'Files',
+      kicker: 'Files & Folders',
       title: existing ? 'Rename folder' : 'New folder',
       body: `
         <label>Name</label>
@@ -2485,7 +2485,7 @@
       : [];
 
     const modal = openModal({
-      kicker: 'Files',
+      kicker: 'Files & Folders',
       title: keepStructure ? 'Upload folder' : (picked.length > 1 ? `Upload ${picked.length} files` : 'Upload file'),
       body: `
         <p><b>${escapeHtml(keepStructure ? roots.join(', ') : picked.map(f => f.name).slice(0, 3).join(', '))}</b>
