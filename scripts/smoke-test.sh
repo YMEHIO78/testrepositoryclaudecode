@@ -205,6 +205,61 @@ else
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$CLID"
 fi
 
+# --------------------------------------------------------- search
+
+head_ "Search"
+
+SC=$(api -X POST "$BASE_URL/api/crm/clients" -H 'Content-Type: application/json' \
+  -d '{"name":"Zephyr Logistics","stage":"engaging","notes":"warehouse migration"}')
+SCID=$(echo "$SC" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+api -o /dev/null -X POST "$BASE_URL/api/crm/clients/$SCID/contacts" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Priya Raman","email":"priya@zephyr-example.com","isPrimary":true}'
+
+ST=$(api -X POST "$BASE_URL/api/tickets" -H 'Content-Type: application/json' \
+  -d "{\"subject\":\"Zephyr onboarding call\",\"clientId\":$SCID}")
+STID=$(echo "$ST" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+if [ -z "$SCID" ]; then
+  bad "could not set up search fixtures" "$SC"
+else
+  api "$BASE_URL/api/search?q=zephyr" | grep -q '"kind":"client"' \
+    && ok "finds a client by name" || bad "client name search"
+
+  # Mid-word, which is the reason for ILIKE '%term%' over a prefix match.
+  api "$BASE_URL/api/search?q=ephyr" | grep -q 'Zephyr Logistics' \
+    && ok "matches mid-word, not just prefixes" || bad "mid-word search"
+
+  # Case-insensitivity is the whole point of ILIKE.
+  api "$BASE_URL/api/search?q=ZEPHYR" | grep -q 'Zephyr Logistics' \
+    && ok "search is case-insensitive" || bad "case sensitivity"
+
+  api "$BASE_URL/api/search?q=warehouse%20migration" | grep -q 'Zephyr Logistics' \
+    && ok "finds a client by its notes" || bad "notes search"
+
+  # A contact's email should surface their client, with a subtitle saying
+  # why — otherwise the hit looks like it matched for no reason.
+  CH=$(api "$BASE_URL/api/search?q=priya")
+  echo "$CH" | grep -q 'Zephyr Logistics' && ok "finds a client via its contact" || bad "contact search"
+  echo "$CH" | grep -q '"subtitle":"Contact: Priya Raman"' \
+    && ok "says which contact matched" || bad "match reason missing"
+
+  api "$BASE_URL/api/search?q=onboarding" | grep -q '"kind":"ticket"' \
+    && ok "finds a ticket by subject" || bad "ticket search"
+
+  # Under two characters must not run: '%a%' matches most of the database
+  # and would look broken rather than helpful.
+  api "$BASE_URL/api/search?q=a" | grep -q '"tooShort":true' \
+    && ok "a one-character query is refused" || bad "short query not refused"
+
+  # A literal % must be searched for, not treated as "match everything".
+  api "$BASE_URL/api/search?q=%25%25" | grep -q '"groups":\[\]' \
+    && ok "wildcards in the query are escaped" || bad "ILIKE wildcard leaked through"
+
+  [ -n "$STID" ] && api -o /dev/null -X DELETE "$BASE_URL/api/tickets/$STID"
+  api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$SCID"
+fi
+
 # -------------------------------------------------------- packages
 
 head_ "Packages and derived client value"

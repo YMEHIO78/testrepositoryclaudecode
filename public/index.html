@@ -206,6 +206,19 @@
   .crm-card[data-health="red"]{border-left-color:var(--red);}
   /* Dropdowns that sit inline in a detail header, styled to read as text
      until you go near them. */
+  /* Global search lives in the rail, above the nav: it is a way of
+     getting anywhere, which is what the nav is for. */
+  .rail-search{position:relative;margin:0 0 18px;}
+  .rail-search input{width:100%;font-family:inherit;font-size:13px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-md);padding:7px 46px 7px 10px;}
+  .rail-search input:focus{outline:none;border-color:var(--brand);}
+  .rail-search kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:inherit;font-size:10px;letter-spacing:.04em;color:var(--color-neutral-400);pointer-events:none;}
+  .rail-search input:focus + kbd{display:none;}
+  .search-group{margin-bottom:26px;}
+  .search-group h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;color:var(--muted);margin:0 0 8px;border-bottom:1px solid var(--line);padding-bottom:6px;}
+  .search-hit{display:flex;align-items:baseline;justify-content:space-between;gap:14px;width:100%;text-align:left;font-family:inherit;background:none;border:0;border-bottom:1px solid var(--line);padding:10px 2px;cursor:pointer;}
+  .search-hit:hover{background:var(--color-neutral-200);}
+  .search-hit .title{font-size:15px;font-weight:600;color:var(--brand);}
+  .search-hit .sub{display:block;font-size:13px;color:var(--muted);font-weight:400;margin-top:2px;}
   .inline-select{font-family:inherit;font-size:13px;color:var(--ink);background:none;border:1px solid transparent;border-radius:var(--radius-md);padding:3px 6px;cursor:pointer;}
   .inline-select:hover,.inline-select:focus{border-color:var(--line);background:var(--panel);}
   .inline-select.brand{color:var(--brand);font-weight:600;}
@@ -510,6 +523,11 @@
   <nav class="rail">
     <div class="brand">POCKET<br>DATA OFFICE<small>WORKSPACE</small></div>
 
+    <div class="rail-search">
+      <input type="search" id="globalSearch" placeholder="Search…" autocomplete="off" spellcheck="false">
+      <kbd>Ctrl K</kbd>
+    </div>
+
     <div class="nav-group">
       <div class="nav-label">Overview</div>
       <button class="nav-btn active" data-view="dash">Dashboard</button>
@@ -808,6 +826,13 @@
       <div class="note" id="filesNote"></div>
     </div>
 
+
+    <!-- ================= SEARCH ================= -->
+    <div class="view hidden" id="view-search">
+      <h1>Search</h1>
+      <p class="sub" id="searchSub">Clients, tickets, projects, files and people. Mail is searched from the <a href="#" data-goto="inbox">Inbox</a>, which queries the mail server directly.</p>
+      <div id="searchResults"></div>
+    </div>
 
     <!-- ================= PACKAGES ================= -->
     <div class="view hidden" id="view-packages">
@@ -2460,6 +2485,96 @@
   }
   wireDetailLinks(document.getElementById('clientDetail'));
   wireDetailLinks(document.getElementById('ticketDetail'));
+
+  // --- Search ---
+  // One box in the rail, results grouped by what they are. Every hit is a
+  // button that opens the actual record, because a search result you
+  // cannot act on is just a reminder that the thing exists.
+  let globalSearchTimer = null;
+  let searchSeq = 0;
+
+  async function runSearch(term){
+    const wrap = document.getElementById('searchResults');
+    const q = term.trim();
+
+    if (q.length < 2) {
+      wrap.innerHTML = '<p class="msg-snippet">Type at least two characters.</p>';
+      return;
+    }
+
+    // Every keystroke starts a request and they can land out of order, so
+    // a stale response must not overwrite a newer one.
+    const seq = ++searchSeq;
+    wrap.innerHTML = '<p class="msg-snippet">Searching…</p>';
+
+    let d;
+    try {
+      d = await (await fetch(`/api/search?q=${encodeURIComponent(q)}`)).json();
+    } catch (err) {
+      if (seq === searchSeq) wrap.innerHTML = '<p class="msg-snippet">Search failed.</p>';
+      return;
+    }
+    if (seq !== searchSeq) return;
+
+    if (!d.groups || !d.groups.length) {
+      wrap.innerHTML = `<p class="msg-snippet">Nothing matches “${escapeHtml(q)}”.</p>`;
+      return;
+    }
+
+    wrap.innerHTML = d.groups.map(g => `
+      <div class="search-group">
+        <h2>${escapeHtml(g.label)}</h2>
+        ${g.items.map(it => `
+          <button type="button" class="search-hit" data-kind="${g.kind}" data-id="${it.id}">
+            <span>
+              <span class="title">${escapeHtml(it.title)}</span>
+              ${it.subtitle ? `<span class="sub">${escapeHtml(it.subtitle)}</span>` : ''}
+            </span>
+            ${it.badge ? `<span class="pill grey">${escapeHtml(String(it.badge).replace(/_/g, ' '))}</span>` : ''}
+          </button>`).join('')}
+      </div>`).join('');
+  }
+
+  document.getElementById('globalSearch').addEventListener('input', (e) => {
+    const term = e.target.value;
+    if (term.trim().length >= 2) goto('search');
+    clearTimeout(globalSearchTimer);
+    globalSearchTimer = setTimeout(() => runSearch(term), 220);
+  });
+
+  document.getElementById('globalSearch').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); }
+  });
+
+  // Ctrl/Cmd-K from anywhere. Prevented rather than passed through
+  // because both browsers bind it to their own address bar search.
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      const box = document.getElementById('globalSearch');
+      box.focus();
+      box.select();
+    }
+  });
+
+  document.getElementById('searchResults').addEventListener('click', (e) => {
+    const hit = e.target.closest('[data-kind]');
+    if (!hit) return;
+    const id = Number(hit.dataset.id);
+
+    switch (hit.dataset.kind) {
+      case 'client': openClientDetail(id); break;
+      case 'ticket': openTicketDetail(id); break;
+      case 'project': openProjectDetail(id); break;
+      case 'person': goto('people'); break;
+      case 'file':
+        // No per-file page exists, so download it — that is what someone
+        // searching for a file by name almost always wants.
+        window.location.href = `/api/files/${id}/download`;
+        break;
+      default: break;
+    }
+  });
 
   // --- Packages ---
   // The price list behind every client's value. Kept editable rather than

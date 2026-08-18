@@ -23,6 +23,7 @@ const people = require('./lib/people');
 const files = require('./lib/files');
 const folders = require('./lib/folders');
 const packages = require('./lib/packages');
+const search = require('./lib/search');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -763,6 +764,18 @@ app.delete('/api/crm/contacts/:id', async (req, res) => {
   const removed = await crm.deleteContact(Number(req.params.id));
   if (!removed) return res.status(404).json({ error: 'Not found.' });
   res.status(204).end();
+});
+
+// --- Search ---
+// Local records only; the Inbox keeps its own IMAP search. See lib/search.js.
+
+app.get('/api/search', async (req, res) => {
+  try {
+    res.json(await search.search(req.query.q));
+  } catch (err) {
+    console.error('Search failed:', err);
+    res.status(500).json({ error: 'Search failed.' });
+  }
 });
 
 // --- Packages ---
