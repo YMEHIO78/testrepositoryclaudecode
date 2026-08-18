@@ -25,7 +25,12 @@ cleanup() { rm -f "$JAR"; }
 trap cleanup EXIT
 
 ok()   { PASS=$((PASS+1)); printf '  \033[32mPASS\033[0m %s\n' "$1"; }
-bad()  { FAIL=$((FAIL+1)); printf '  \033[31mFAIL\033[0m %s\n'   "$1"; [ -n "${2:-}" ] && printf '       %s\n' "$2"; }
+# The trailing `return 0` is load-bearing. Without it the function ends on
+# `[ -n "$2" ]`, which exits non-zero whenever no detail is passed — so a
+# check written `cond && bad "x" || ok "y"` ran BOTH branches and reported
+# a FAIL and a PASS for the same assertion. Checks written the other way
+# round were unaffected, which is why it hid for so long.
+bad()  { FAIL=$((FAIL+1)); printf '  \033[31mFAIL\033[0m %s\n'   "$1"; [ -n "${2:-}" ] && printf '       %s\n' "$2"; return 0; }
 head_() { printf '\n== %s\n' "$1"; }
 
 api() { curl -s -b "$JAR" --max-time 60 "$@"; }
@@ -213,7 +218,8 @@ SUM=$(api "$BASE_URL/api/export/summary")
 echo "$SUM" | grep -q '"counts"' && ok "export summary responds" || bad "export summary" "$(echo "$SUM" | head -c 150)"
 
 EXP=$(api "$BASE_URL/api/export")
-echo "$EXP" | grep -q '"formatVersion":1' && ok "export builds" || bad "export failed"
+# Pretty-printed, so the colon is followed by a space.
+echo "$EXP" | grep -q '"formatVersion": 1' && ok "export builds" || bad "export failed"
 echo "$EXP" | grep -q '"clients"' && ok "export includes clients" || bad "clients missing from export"
 echo "$EXP" | grep -q '"packages"' && ok "export includes packages" || bad "packages missing from export"
 
@@ -224,8 +230,10 @@ echo "$EXP" | grep -q 'encrypted_password' \
 echo "$EXP" | grep -q 'calendar_feed_token' \
   && bad "the export contains the calendar feed token" \
   || ok "the calendar feed token is excluded"
-echo "$EXP" | grep -q 'oauth_tokens' \
-  && bad "the export contains oauth tokens" || ok "oauth tokens are excluded"
+# Match the column, not the table name: the table name legitimately
+# appears in the export's own list of what it left out.
+echo "$EXP" | grep -q 'encrypted_payload' \
+  && bad "the export contains oauth token payloads" || ok "oauth tokens are excluded"
 
 # It has to arrive as a file, not render in the browser.
 BH=$(api -D - -o /dev/null "$BASE_URL/api/export")
