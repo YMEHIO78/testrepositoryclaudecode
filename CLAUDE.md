@@ -3,6 +3,37 @@
 Project context for Claude Code. Read `HANDOFF.md` for current state and
 outstanding work; this file covers how to work in the repo.
 
+## Standing rule: documentation is part of every change
+
+**The user has asked that documentation always be kept current — across
+every session, indefinitely.** Treat a change as unfinished until its
+docs are updated, in the same commit as the code. Do not batch it up "for
+later" and do not wait to be asked.
+
+Which file to touch, by change type:
+
+| You changed | Update |
+|---|---|
+| A table, column, index, or cascade | `docs/SCHEMA.md` |
+| An integration, or something learned about a third-party API | `README.md` + `HANDOFF.md` |
+| Colours, type, spacing, or a component pattern | `docs/DESIGN.md` |
+| A view's structure, or a JS section in the front end | the section map atop `public/index.html` |
+| Behaviour worth protecting from regression | add a check to `scripts/smoke-test.sh` |
+| Deploy mechanics, tooling quirks, or conventions | this file |
+| Shipped a feature, or hit a dead end | `HANDOFF.md` |
+
+Also:
+
+- **Record dead ends, not just successes.** "Outlook is impossible
+  because the domain is on Hostinger" saved re-investigating it. A future
+  session cannot know what was already ruled out unless it is written
+  down.
+- **Note when a *test* was wrong**, not just when code was. Several
+  false alarms this project came from bad test harnesses; that pattern is
+  worth remembering.
+- **Never write secret values into any file.** Reference them by
+  variable name. Docs live in a public repo.
+
 ## What this is
 
 Internal ops app for a small data consultancy: mail, calendar, booking
