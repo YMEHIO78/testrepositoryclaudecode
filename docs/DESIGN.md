@@ -126,12 +126,31 @@ an icon that lives in the HTML string costs nothing and cannot 404. They
 are drawn in `currentColor`, which means the existing palette tokens
 apply and no second set of colour rules exists to drift.
 
-The pair in use:
+The set in use:
 
 | | Fill | Colour | Reads as |
 |---|---|---|---|
 | Folder | solid | `var(--brand)` | weighty, accent |
-| File | outlined, 1.3px stroke | `var(--muted)` | light, recessive |
+| File (generic) | outlined, 1.3px stroke | `var(--muted)` | light, recessive |
+| Spreadsheet | outline + four filled cells | `var(--color-file-sheet)` | green, gridded |
+| Presentation | outline + one filled slide on a stem | `var(--color-file-deck)` | terracotta, solid |
+
+Every file variant keeps the **same sheet-with-a-folded-corner outline**,
+so a typed file reads as a file first and a spreadsheet second. Only the
+interior mark and the colour change. The interior marks are solid shapes,
+not thin lines: a drawn grid vanishes at 15px, four small blocks do not.
+The spreadsheet gets four small shapes and the deck gets one large one,
+which is a difference you can still see when the icon is a smudge.
+
+The two file-type hues are desaturated takes on the colours everyone
+already associates with spreadsheets and decks. The convention is worth
+borrowing; Office's actual saturation would fight a warm cream palette,
+so it is not borrowed. They exist only for file icons at 15px.
+
+Type is chosen from the **filename extension, not the stored content
+type** — browsers disagree about what MIME type a `.csv` gets
+(`text/plain`, `application/vnd.ms-excel`, or nothing), so the extension
+is the more reliable of the two signals.
 
 Deliberately different in **weight and colour, not just shape** — at 15px
 two outlined glyphs of similar size are hard to tell apart in a glance
