@@ -175,12 +175,29 @@
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
-  /* Group headings inside a table body. Not clickable and not a client,
-     so they get their own background and no pointer cursor - otherwise a
-     heading looks like a row you can open. */
-  tr.group-head td{background:var(--color-neutral-200);border-bottom:1px solid var(--line);padding-top:11px;padding-bottom:11px;}
-  tr.group-head .sub{display:inline;margin-left:8px;color:var(--muted);font-size:12px;}
-  tr.group-head .num{font-weight:600;}
+  /* Pipeline board — the reference's grouped view. Columns are stages,
+     cards are clients. auto-fit rather than a fixed five, because the
+     stage list is data and the stage filter can narrow it to one. */
+  .crm-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:22px;align-items:start;margin-bottom:18px;}
+  .crm-col{display:flex;flex-direction:column;gap:11px;}
+  .crm-col-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;border-bottom:2px solid var(--ink);padding-bottom:7px;}
+  .crm-col-head .stage{font-size:12px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;}
+  .crm-col-head .count{font-size:12px;color:var(--color-neutral-500);}
+  .crm-card{display:flex;flex-direction:column;gap:5px;text-align:left;font-family:inherit;width:100%;cursor:pointer;background:var(--panel);border:1px solid rgba(32,30,29,.16);border-radius:2px;padding:13px 14px 14px;}
+  .crm-card:hover{border-color:var(--brand);}
+  .crm-card .name{font-size:15px;font-weight:600;line-height:1.25;}
+  .crm-card .person{font-size:13px;color:#605d5d;}
+  .crm-card .pkgs{font-size:13px;color:var(--muted);}
+  .crm-card .foot{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding-top:4px;}
+  .crm-card .value{font-size:14px;font-weight:600;color:var(--brand);}
+  .crm-card .touch{font-size:12px;color:var(--color-neutral-400);}
+  .crm-col-empty{font-size:13px;color:var(--color-neutral-400);padding:2px 1px;}
+  /* Lost sits outside the board, as in the reference: it is not a stage
+     work flows through, so a column of it would imply otherwise. */
+  .crm-rejected{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:24px;}
+  .crm-rejected .label{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-400);font-weight:600;}
+  .crm-rejected button{font-family:inherit;font-size:14px;color:var(--muted);background:none;border:1px solid rgba(32,30,29,.16);border-radius:2px;padding:6px 11px;cursor:pointer;}
+  .crm-rejected button:hover{border-color:var(--brand);color:var(--ink);}
   .stepper{display:inline-flex;align-items:center;gap:4px;flex:none;}
   .step-btn{font-family:inherit;font-size:16px;line-height:1;width:30px;height:30px;color:var(--ink);background:none;border:1px solid var(--line);border-radius:2px;cursor:pointer;}
   .step-btn:hover{background:var(--color-neutral-300);border-color:var(--brand);}
@@ -658,12 +675,16 @@
       </div>
 
 
-      <div class="card">
+      <div id="crmTableWrap" class="card">
         <table>
           <thead><tr><th>Client / lead</th><th>Stage</th><th>Primary contact</th><th>Contacts</th><th>Value</th><th>Last touch</th></tr></thead>
           <tbody id="crmRows"><tr><td colspan="6" class="msg-snippet">Loading…</td></tr></tbody>
         </table>
       </div>
+
+      <!-- Board view. A card grid cannot live inside a tbody, so grouped
+           mode swaps this in for the table rather than restyling rows. -->
+      <div id="crmBoard" class="hidden"></div>
 
       <div class="note">Mail from a known contact's address is labelled with their client automatically in the <a href="#" data-goto="inbox">Inbox</a>. Projects and tickets will hang off these records once those modules are real.</div>
     </div>
@@ -3769,7 +3790,11 @@
     }
 
     const grouped = document.getElementById('crmGroup').value === 'stage';
-    rows.innerHTML = grouped ? crmGroupedRows(list) : list.map(crmRow).join('');
+    document.getElementById('crmTableWrap').classList.toggle('hidden', grouped);
+    document.getElementById('crmBoard').classList.toggle('hidden', !grouped);
+
+    if (grouped) renderCrmBoard(list);
+    else rows.innerHTML = list.map(crmRow).join('');
   }
 
   function crmRow(c){
@@ -3786,31 +3811,73 @@
       </tr>`;
   }
 
-  // Groups run in pipeline order — coldest to won, then lost — because
-  // that is the order the stages mean something in, not alphabetical.
-  // Clients inside a group are alphabetical, case-insensitively, so
-  // "acme" and "Acme Holdings" sit together rather than in separate runs
-  // of upper and lower case.
+  // The pipeline board from the design reference: a column per stage,
+  // a card per client.
   //
-  // Only stages that actually have someone in them get a heading. An
-  // empty "Offer sent" row would be a heading with nothing under it.
-  function crmGroupedRows(list){
-    return crmData.stages.map(stage => {
-      const inStage = list
-        .filter(c => c.stage === stage.key)
-        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-      if (!inStage.length) return '';
-
-      const value = inStage.reduce((sum, c) => sum + (c.valueCents || 0), 0);
-      return `
-        <tr class="group-head">
-          <td colspan="4"><span class="pill ${stage.tone}">${escapeHtml(stage.label)}</span>
-            <span class="sub">${inStage.length}</span></td>
-          <td class="num">${escapeHtml(money(value, false))}</td>
-          <td></td>
-        </tr>` + inStage.map(crmRow).join('');
-    }).join('');
+  // Columns run in pipeline order — coldest to won — because that is the
+  // order the stages mean something in. Cards inside a column are
+  // alphabetical and case-insensitive, so "acme" sits with "Acme
+  // Holdings" instead of lowercase names forming a separate run.
+  //
+  // Lost is deliberately not a column. The reference pulls it out as a
+  // row of small buttons underneath, and it is right: a column implies a
+  // place work sits on its way somewhere, and lost is where it stopped.
+  function stageSort(a, b){
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
   }
+
+  function renderCrmBoard(list){
+    const board = document.getElementById('crmBoard');
+    const columns = crmData.stages.filter(s => s.key !== 'lost');
+    const lost = list.filter(c => c.stage === 'lost').sort(stageSort);
+
+    // Empty columns are kept here, unlike the flat grouped list: on a
+    // board the gap is the point — an empty "Offer sent" tells you
+    // nothing is out for signature.
+    const cols = columns.map(stage => {
+      const inStage = list.filter(c => c.stage === stage.key).sort(stageSort);
+      return `
+        <div class="crm-col">
+          <div class="crm-col-head">
+            <span class="stage">${escapeHtml(stage.label)}</span>
+            <span class="count">${inStage.length || ''}</span>
+          </div>
+          ${inStage.length
+            ? inStage.map(crmCard).join('')
+            : '<div class="crm-col-empty">—</div>'}
+        </div>`;
+    }).join('');
+
+    board.innerHTML = `<div class="crm-board">${cols}</div>`
+      + (lost.length ? `
+        <div class="crm-rejected">
+          <span class="label">Rejected</span>
+          ${lost.map(c => `<button type="button" data-id="${c.id}">${escapeHtml(c.name)}
+            · ${escapeHtml(money(c.valueCents, c.recurring))}
+            · ${escapeHtml(relativeDate(c.lastTouchAt))}</button>`).join('')}
+        </div>` : '');
+  }
+
+  function crmCard(c){
+    const primary = c.contacts.find(x => x.isPrimary) || c.contacts[0];
+    return `
+      <button type="button" class="crm-card" data-id="${c.id}">
+        <span class="name">${escapeHtml(c.name)}</span>
+        <span class="person">${primary ? escapeHtml(primary.name) : 'No contact yet'}</span>
+        <span class="pkgs">${escapeHtml(c.packagesSummary || 'No packages')}</span>
+        <span class="foot">
+          <span class="value">${escapeHtml(money(c.valueCents, c.recurring))}</span>
+          <span class="touch">${escapeHtml(relativeDate(c.lastTouchAt))}</span>
+        </span>
+      </button>`;
+  }
+
+  // Cards and rejected buttons both carry data-id, so one delegated
+  // handler on the board covers the whole view.
+  document.getElementById('crmBoard').addEventListener('click', (e) => {
+    const el = e.target.closest('[data-id]');
+    if (el) openClientDetail(Number(el.dataset.id));
+  });
 
   document.getElementById('crmFilter').addEventListener('change', renderCrm);
   document.getElementById('crmGroup').addEventListener('change', renderCrm);
