@@ -155,6 +155,15 @@
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);font-weight:600;}
   td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+  /* Row icons: the first SVG in the app. Inline rather than an icon font
+     or sprite so there is nothing to fetch, and drawn in currentColor so
+     the palette applies without a second set of colour rules. A filled
+     accent folder against an outlined muted document reads as different
+     at a glance even before you register the shapes. */
+  .name-cell{display:inline-flex;align-items:baseline;gap:8px;}
+  .row-icon{flex:none;width:15px;height:15px;position:relative;top:2px;}
+  .row-icon.folder{color:var(--brand);}
+  .row-icon.file{color:var(--muted);}
   tr:last-child td{border-bottom:none;}
   tr:hover td{background:#faf9f6;}
 
@@ -2039,7 +2048,7 @@
             ${(d.files || []).length ? (d.files || []).slice(0, 12).map(f => `
               <div class="detail-row">
                 <span>
-                  <a href="/api/files/${f.id}/download" download>${escapeHtml(f.name)}</a>
+                  <span class="name-cell">${FILE_ICON}<a href="/api/files/${f.id}/download" download>${escapeHtml(f.name)}</a></span>
                   <div class="sub">${escapeHtml(fileSize(f.sizeBytes))}${f.notes ? ' · ' + escapeHtml(f.notes) : ''}</div>
                 </span>
                 <span class="sub">${escapeHtml(timeAgo(f.createdAt))}</span>
@@ -2217,6 +2226,16 @@
     return document.getElementById('filesClientFilter').value;
   }
 
+  // Decorative only — the name sits right next to them, so they are
+  // hidden from screen readers rather than given a label to repeat.
+  const FOLDER_ICON = `<svg class="row-icon folder" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <path d="M1.4 3.6a1.2 1.2 0 0 1 1.2-1.2h3.1c.33 0 .64.13.87.36l1 1h5.8a1.2 1.2 0 0 1 1.2 1.2v7.7a1.2 1.2 0 0 1-1.2 1.2H2.6a1.2 1.2 0 0 1-1.2-1.2z"/>
+  </svg>`;
+  const FILE_ICON = `<svg class="row-icon file" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true">
+    <path d="M9.3 1.9H4.6a1.1 1.1 0 0 0-1.1 1.1v10a1.1 1.1 0 0 0 1.1 1.1h6.8a1.1 1.1 0 0 0 1.1-1.1V5.1z"/>
+    <path d="M9.3 1.9v3.2h3.2"/>
+  </svg>`;
+
   async function loadFiles(){
     const rows = document.getElementById('filesRows');
     if (!rows) return;
@@ -2279,7 +2298,7 @@
 
     const folderRows = (filesData.folders || []).map(f => `
       <tr data-folder="${f.id}">
-        <td><a data-open="${f.id}"><b>${escapeHtml(f.name)}</b></a>
+        <td><span class="name-cell">${FOLDER_ICON}<a data-open="${f.id}"><b>${escapeHtml(f.name)}</b></a></span>
           <div class="sub">Folder</div></td>
         <td>—</td>
         <td>—</td>
@@ -2293,7 +2312,7 @@
 
     const fileRows = filesData.files.map(f => `
       <tr data-id="${f.id}">
-        <td><a href="/api/files/${f.id}/download" download><b>${escapeHtml(f.name)}</b></a>
+        <td><span class="name-cell">${FILE_ICON}<a href="/api/files/${f.id}/download" download><b>${escapeHtml(f.name)}</b></a></span>
           ${f.notes ? `<div class="sub">${escapeHtml(f.notes)}</div>` : ''}</td>
         <td>${f.clientId ? `<a data-client="${f.clientId}">${escapeHtml(f.clientName || '—')}</a>` : '—'}</td>
         <td>${f.projectId ? `<a data-project="${f.projectId}">${escapeHtml(f.projectName || '—')}</a>` : '—'}</td>

@@ -115,3 +115,37 @@ tickets and projects, and the Projects, Files and People views. They
 reuse the tokens and patterns above rather than introducing new ones —
 the Files view is a `.stat-strip` over a plain table, and its upload flow
 is an `openModal` dialog like every other create flow.
+
+## Icons
+
+The Files view introduced the first icons in the app. They are **inline
+SVG in the markup**, not an icon font, sprite sheet, or image file.
+
+Why: there is no build step and nothing should be fetched at runtime, so
+an icon that lives in the HTML string costs nothing and cannot 404. They
+are drawn in `currentColor`, which means the existing palette tokens
+apply and no second set of colour rules exists to drift.
+
+The pair in use:
+
+| | Fill | Colour | Reads as |
+|---|---|---|---|
+| Folder | solid | `var(--brand)` | weighty, accent |
+| File | outlined, 1.3px stroke | `var(--muted)` | light, recessive |
+
+Deliberately different in **weight and colour, not just shape** — at 15px
+two outlined glyphs of similar size are hard to tell apart in a glance
+down a column, which is the whole job. Folders also sort above files, so
+the accent colour clusters at the top of the list.
+
+Markup pattern:
+
+```html
+<span class="name-cell">{ICON}<a>Name</a></span>
+```
+
+`.name-cell` is an inline-flex baseline row, so the icon aligns to the
+text baseline rather than the cell box and stays put when a `.sub` line
+appears underneath. Icons carry `aria-hidden="true"`: the name sits
+immediately beside them, and a label would just make a screen reader say
+everything twice.
