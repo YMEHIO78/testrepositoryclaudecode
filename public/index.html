@@ -69,6 +69,8 @@
        cream palette. Only ever used at 15px on a file icon. */
     --color-file-sheet:#2f6f4f;
     --color-file-deck:#b0602a;
+    --color-file-doc:#2b5b96;
+    --color-file-pdf:#9e2a2b;
     --color-neutral-100:#fffdf8;
     --color-neutral-200:#f4f0e6;
     --color-neutral-300:#f0ebe0;
@@ -172,6 +174,8 @@
   .row-icon.file{color:var(--muted);}
   .row-icon.sheet{color:var(--color-file-sheet);}
   .row-icon.deck{color:var(--color-file-deck);}
+  .row-icon.doc{color:var(--color-file-doc);}
+  .row-icon.pdf{color:var(--color-file-pdf);}
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
@@ -192,6 +196,21 @@
   .crm-card .value{font-size:14px;font-weight:600;color:var(--brand);}
   .crm-card .touch{font-size:12px;color:var(--color-neutral-400);}
   .crm-col-empty{font-size:13px;color:var(--color-neutral-400);padding:2px 1px;}
+  /* Health as a left edge on the card rather than another line of text —
+     the board is already dense, and a colour reads faster than a word.
+     No stripe at all when health is unset, which is honest: nobody has
+     assessed it, and a grey stripe would imply someone had. */
+  .crm-card[data-health]{border-left-width:3px;}
+  .crm-card[data-health="brand"]{border-left-color:var(--brand);}
+  .crm-card[data-health="amber"]{border-left-color:var(--color-process-yellow);}
+  .crm-card[data-health="red"]{border-left-color:var(--red);}
+  /* Dropdowns that sit inline in a detail header, styled to read as text
+     until you go near them. */
+  .inline-select{font-family:inherit;font-size:13px;color:var(--ink);background:none;border:1px solid transparent;border-radius:var(--radius-md);padding:3px 6px;cursor:pointer;}
+  .inline-select:hover,.inline-select:focus{border-color:var(--line);background:var(--panel);}
+  .inline-select.brand{color:var(--brand);font-weight:600;}
+  .inline-select.amber{color:#8a6d00;font-weight:600;}
+  .inline-select.red{color:var(--red);font-weight:600;}
   /* Lost sits outside the board, as in the reference: it is not a stage
      work flows through, so a column of it would imply otherwise. */
   .crm-rejected{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:24px;}
@@ -2102,9 +2121,19 @@
       <div class="detail-head">
         <h1>${escapeHtml(c.name)}</h1>
         <div class="detail-meta">
-          <span class="pill ${stage.tone}">${escapeHtml(stage.label)}</span>
+          <select class="inline-select" id="cdStage" aria-label="Stage">
+            ${crmData.stages.map(s => `<option value="${s.key}" ${c.stage === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
+          </select>
+          <select class="inline-select" id="cdTerms" aria-label="Terms">
+            <option value="">Terms — not set</option>
+            ${(crmData.terms || []).map(t => `<option value="${escapeHtml(t)}" ${c.terms === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
+          </select>
+          <select class="inline-select ${healthTone(c.health)}" id="cdHealth" aria-label="Health">
+            <option value="">Health — not set</option>
+            ${(crmData.health || []).map(h => `<option value="${escapeHtml(h.key)}" ${c.health === h.key ? 'selected' : ''}>${escapeHtml(h.key)}</option>`).join('')}
+          </select>
           <span>${escapeHtml(money(c.valueCents, c.recurring))}</span>
-          <span>Last touch: ${escapeHtml(relativeDate(c.lastTouchAt))}</span>
+          <span>${c.clientSince ? 'Client since ' + escapeHtml(shortDate(c.clientSince)) + ' · ' : ''}last touch ${escapeHtml(relativeDate(c.lastTouchAt))}</span>
           <button type="button" class="btn ghost" id="cdEdit" style="margin-left:auto;">Edit</button>
         </div>
       </div>
@@ -2235,6 +2264,31 @@
       const fresh = crmData.clients.find(x => x.id === c.id) || c;
       openClientEditor(fresh, () => openClientDetail(c.id));
     };
+
+    // Stage, terms and health save in place. Each sends only its own
+    // field, which is why updateClient leaves unsent fields alone rather
+    // than nulling them.
+    for (const [id, field] of [['cdStage', 'stage'], ['cdTerms', 'terms'], ['cdHealth', 'health']]) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.onchange = async () => {
+        const previous = c[field];
+        try {
+          const res = await fetch(`/api/crm/clients/${c.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [field]: el.value }),
+          });
+          if (!res.ok) throw new Error('Could not save.');
+          c[field] = el.value || null;
+          if (id === 'cdHealth') el.className = `inline-select ${healthTone(el.value)}`;
+          loadCrm();
+        } catch (err) {
+          el.value = previous || '';
+          showBanner(err.message, 'error');
+        }
+      };
+    }
 
     paintPkgRows(d.packages || []);
   }
@@ -2585,8 +2639,22 @@
     <path d="M7.75 10.8v1.5" stroke-width="1.1" stroke-linecap="round"/>
   </svg>`;
 
+  // Two horizontal rules: a page of text. Distinct from the sheet's four
+  // small blocks and the deck's one large one purely by count and shape.
+  const DOC_ICON = `<svg class="row-icon doc" ${DOC_ATTRS}>${DOC_OUTLINE}
+    <path d="M5.4 8.4h5.2M5.4 10.6h5.2M5.4 12.2h3.1" stroke-width="1.1" stroke-linecap="round"/>
+  </svg>`;
+
+  // A filled band across the page, the shape everyone reads as a PDF
+  // label. Solid rather than outlined so it survives at 15px.
+  const PDF_ICON = `<svg class="row-icon pdf" ${DOC_ATTRS}>${DOC_OUTLINE}
+    <rect x="3.9" y="8.3" width="8.2" height="3.4" rx=".5" fill="currentColor" stroke="none"/>
+  </svg>`;
+
   const SHEET_EXT = ['csv', 'tsv', 'xlsx', 'xls', 'xlsm'];
   const DECK_EXT = ['ppt', 'pptx', 'pps', 'ppsx', 'key'];
+  const DOC_EXT = ['doc', 'docx', 'rtf', 'odt', 'txt', 'md'];
+  const PDF_EXT = ['pdf'];
 
   // Chosen from the filename, not the stored content type: browsers are
   // inconsistent about the MIME type they attach to a .csv (text/plain,
@@ -2596,6 +2664,8 @@
     const ext = String(name || '').split('.').pop().toLowerCase();
     if (SHEET_EXT.includes(ext)) return SHEET_ICON;
     if (DECK_EXT.includes(ext)) return DECK_ICON;
+    if (PDF_EXT.includes(ext)) return PDF_ICON;
+    if (DOC_EXT.includes(ext)) return DOC_ICON;
     return FILE_ICON;
   }
 
@@ -2682,7 +2752,10 @@
         <td>${f.projectId ? `<a data-project="${f.projectId}">${escapeHtml(f.projectName || '—')}</a>` : '—'}</td>
         <td class="num">${escapeHtml(fileSize(f.sizeBytes))}</td>
         <td>${escapeHtml(relativeDate(f.createdAt))}</td>
-        <td><button type="button" class="int-btn connected" data-del="${f.id}">Delete</button></td>
+        <td>
+          <button type="button" class="int-btn" data-move="${f.id}">Move</button>
+          <button type="button" class="int-btn connected" data-del="${f.id}">Delete</button>
+        </td>
       </tr>`).join('');
 
     if (!folderRows && !fileRows) {
@@ -2891,9 +2964,76 @@
     };
   }
 
+  // Destination list for a move. Folders come back flat, so the path is
+  // rebuilt here by walking parentId — a folder five deep needs to be
+  // distinguishable from another of the same name elsewhere.
+  function folderPath(folder, byId){
+    const parts = [];
+    let cur = folder;
+    for (let i = 0; i < 10 && cur; i += 1) {
+      parts.unshift(cur.name);
+      cur = cur.parentId ? byId.get(cur.parentId) : null;
+    }
+    return parts.join(' / ');
+  }
+
+  async function openMoveDialog(file){
+    let all = [];
+    try {
+      const q = file.clientId ? `?clientId=${file.clientId}` : '';
+      all = (await (await fetch(`/api/folders${q}`)).json()).folders || [];
+    } catch (err) {
+      showBanner('Could not load folders.', 'error');
+      return;
+    }
+
+    const byId = new Map(all.map(f => [f.id, f]));
+    const options = all
+      .map(f => ({ id: f.id, label: folderPath(f, byId) }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+
+    const modal = openModal({
+      kicker: 'Files & Folders',
+      title: `Move ${escapeHtml(file.name)}`,
+      body: `
+        <label>Destination</label>
+        <select id="mvFolder">
+          <option value="">— top level —</option>
+          ${options.map(o => `<option value="${o.id}" ${o.id === file.folderId ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+        </select>
+        <p class="msg-snippet" style="margin-top:var(--space-2);">Moving only changes where the file is filed. The stored file itself is untouched, and the download link keeps working.</p>`,
+      actions: actionButtons('Move'),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      modalStatus('Moving…');
+      try {
+        const value = document.getElementById('mvFolder').value;
+        const res = await fetch(`/api/files/${file.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folderId: value ? Number(value) : null }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not move.');
+        closeModal();
+        loadFiles();
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
+  }
+
   document.getElementById('filesRows').addEventListener('click', async (e) => {
     const open = e.target.closest('[data-open]');
     if (open) { filesFolderId = Number(open.dataset.open); loadFiles(); return; }
+
+    const mv = e.target.closest('[data-move]');
+    if (mv) {
+      const f = filesData.files.find(x => x.id === Number(mv.dataset.move));
+      if (f) openMoveDialog(f);
+      return;
+    }
 
     const ren = e.target.closest('[data-renamefolder]');
     if (ren) {
@@ -3732,7 +3872,7 @@
   }
 
   // --- CRM ---
-  let crmData = { stages: [], clients: [] };
+  let crmData = { stages: [], terms: [], health: [], clients: [] };
 
   function money(cents, recurring){
     if (cents === null || cents === undefined) return '—';
@@ -3742,6 +3882,23 @@
 
   function stageMeta(key){
     return crmData.stages.find(s => s.key === key) || { label: key, tone: 'grey' };
+  }
+
+  // Health drives a colour in two places, so the mapping lives in one.
+  // An unset health gets no tone at all rather than defaulting to green —
+  // "nobody has assessed this" is not the same claim as "it is fine".
+  function healthTone(key){
+    const found = (crmData.health || []).find(h => h.key === key);
+    return found ? found.tone : '';
+  }
+
+  // Month and year: a client start date is remembered as "since March",
+  // not to the day, and the reference shows it that way too.
+  function shortDate(value){
+    if (!value) return '';
+    const d = new Date(value);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   }
 
   function relativeDate(iso){
@@ -3861,7 +4018,7 @@
   function crmCard(c){
     const primary = c.contacts.find(x => x.isPrimary) || c.contacts[0];
     return `
-      <button type="button" class="crm-card" data-id="${c.id}">
+      <button type="button" class="crm-card" data-id="${c.id}"${healthTone(c.health) ? ` data-health="${healthTone(c.health)}"` : ''}>
         <span class="name">${escapeHtml(c.name)}</span>
         <span class="person">${primary ? escapeHtml(primary.name) : 'No contact yet'}</span>
         <span class="pkgs">${escapeHtml(c.packagesSummary || 'No packages')}</span>
@@ -3897,10 +4054,34 @@
       body: `
         <label>Client / lead name</label>
         <input type="text" id="clName" value="${escapeHtml(client?.name || '')}" placeholder="Acme Logistics">
-        <label>Stage</label>
-        <select id="clStage">
-          ${crmData.stages.map(s => `<option value="${s.key}" ${client?.stage === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
-        </select>
+        <div class="cols">
+          <div>
+            <label>Stage</label>
+            <select id="clStage">
+              ${crmData.stages.map(s => `<option value="${s.key}" ${client?.stage === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label>Terms</label>
+            <select id="clTerms">
+              <option value="">— not set —</option>
+              ${(crmData.terms || []).map(t => `<option value="${escapeHtml(t)}" ${client?.terms === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="cols">
+          <div>
+            <label>Health</label>
+            <select id="clHealth">
+              <option value="">— not set —</option>
+              ${(crmData.health || []).map(h => `<option value="${escapeHtml(h.key)}" ${client?.health === h.key ? 'selected' : ''}>${escapeHtml(h.key)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label>Client since</label>
+            <input type="date" id="clSince" value="${client?.clientSince ? escapeHtml(String(client.clientSince).slice(0, 10)) : ''}">
+          </div>
+        </div>
         ${isEdit ? `<p class="msg-snippet" style="margin-top:var(--space-2);">Value is set by package quantities on this client's page, not typed here.</p>` : ''}
         <label class="cal-checkbox" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);">
           <input type="checkbox" id="clRecurring" ${client?.recurring ? 'checked' : ''}> Recurring monthly
@@ -3940,6 +4121,9 @@
           body: JSON.stringify({
             name,
             stage: document.getElementById('clStage').value,
+            terms: document.getElementById('clTerms').value,
+            health: document.getElementById('clHealth').value,
+            clientSince: document.getElementById('clSince').value || null,
             recurring: document.getElementById('clRecurring').checked,
             notes: document.getElementById('clNotes').value.trim() || null,
             lastTouchAt: client?.lastTouchAt || null,

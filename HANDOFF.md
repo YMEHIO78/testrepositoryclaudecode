@@ -213,13 +213,14 @@ System spec (a static reference page; nothing to wire up)
   same `@aws-sdk/client-s3` code works against either). **Not built.**
 
 **Feature gaps in what already works:**
-- Inbox: no forward. Attachments download; search and pagination work.
+- Inbox: forward, reply, search, pagination and attachment downloads all
+  work. No labels or folders beyond the inbox itself.
 - Unread counts come from IMAP `STATUS (UNSEEN)`, so they are true
   mailbox-wide totals.
 - Wave: invoices only; expenses are not pulled.
-- Files: folders, folder upload and per-client browsing all work. Still
-  missing: per-file preview, drag-and-drop onto the page, and moving a
-  file between folders after upload.
+- Files: folders, folder upload, per-client browsing and moving a file
+  between folders all work. Still missing: per-file preview and
+  drag-and-drop onto the page.
 - People: deliberately has **no** access or permission column. The app has
   a single shared login; a permission field would imply enforcement that
   does not exist.

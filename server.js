@@ -604,7 +604,12 @@ app.delete('/api/calendar/events/:id', async (req, res) => {
 
 app.get('/api/crm/clients', async (req, res) => {
   try {
-    res.json({ stages: crm.STAGES, clients: await crm.listClients() });
+    res.json({
+      stages: crm.STAGES,
+      terms: crm.TERMS,
+      health: crm.HEALTH,
+      clients: await crm.listClients(),
+    });
   } catch (err) {
     console.error('Failed to list clients:', err);
     res.status(500).json({ error: 'Could not load clients.' });
@@ -875,6 +880,21 @@ app.get('/api/files', async (req, res) => {
   }
 });
 
+// Every folder at any depth, for the move dialog's destination list. The
+// browsing endpoint returns one level, which is the wrong shape here.
+app.get('/api/folders', async (req, res) => {
+  try {
+    res.json({
+      folders: await folders.listFolders({
+        clientId: req.query.clientId ? Number(req.query.clientId) : undefined,
+      }),
+    });
+  } catch (err) {
+    console.error('Failed to list folders:', err);
+    res.status(500).json({ error: 'Could not load folders.' });
+  }
+});
+
 app.post('/api/folders', express.json(), async (req, res) => {
   try {
     const { name, clientId, parentId } = req.body || {};
@@ -965,6 +985,21 @@ app.get('/api/files/:id/download', async (req, res) => {
   } catch (err) {
     console.error('Download failed:', err);
     res.status(502).send('Could not fetch that file.');
+  }
+});
+
+// Moving a file between folders. Metadata only — the stored object is
+// untouched, since its key never encoded a path.
+app.patch('/api/files/:id', express.json(), async (req, res) => {
+  try {
+    const { folderId } = req.body || {};
+    const moved = await files.move(Number(req.params.id),
+      folderId ? Number(folderId) : null);
+    if (!moved) return res.status(404).json({ error: 'Not found.' });
+    res.json(moved);
+  } catch (err) {
+    console.error('Move failed:', err);
+    res.status(400).json({ error: 'Could not move that file.' });
   }
 });
 

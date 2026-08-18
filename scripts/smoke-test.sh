@@ -171,6 +171,37 @@ else
   echo "$CD" | grep -q '"invoices"' && ok "client detail includes invoices"|| bad "client detail invoices"
   echo "$CD" | grep -q '"warnings"' && ok "client detail reports warnings" || bad "client detail warnings"
 
+  # Terms, health and start date. All optional, and a partial update must
+  # leave the fields it does not mention alone — the detail page's inline
+  # dropdowns each send exactly one.
+  api -o /dev/null -X PATCH "$BASE_URL/api/crm/clients/$CLID" \
+    -H 'Content-Type: application/json' \
+    -d '{"terms":"Retainer","health":"Watch","clientSince":"2026-03-01"}'
+  WITH=$(api "$BASE_URL/api/crm/clients/$CLID/detail")
+  echo "$WITH" | grep -q '"terms":"Retainer"' && ok "terms saved" || bad "terms not saved"
+  echo "$WITH" | grep -q '"health":"Watch"' && ok "health saved" || bad "health not saved"
+  echo "$WITH" | grep -q '"clientSince"' && ok "client since saved" || bad "clientSince not saved"
+
+  api -o /dev/null -X PATCH "$BASE_URL/api/crm/clients/$CLID" \
+    -H 'Content-Type: application/json' -d '{"stage":"engaging"}'
+  PART=$(api "$BASE_URL/api/crm/clients/$CLID/detail")
+  echo "$PART" | grep -q '"terms":"Retainer"' \
+    && ok "a partial update leaves terms alone" \
+    || bad "partial update nulled terms" "the inline dropdowns each send one field"
+  echo "$PART" | grep -q '"health":"Watch"' \
+    && ok "a partial update leaves health alone" || bad "partial update nulled health"
+
+  # An unknown value must not be stored — health drives a colour, and an
+  # unrecognised one would render as no assessment at all.
+  api -o /dev/null -X PATCH "$BASE_URL/api/crm/clients/$CLID" \
+    -H 'Content-Type: application/json' -d '{"health":"Fantastic"}'
+  api "$BASE_URL/api/crm/clients/$CLID/detail" | grep -q '"health":"Fantastic"' \
+    && bad "an unknown health value was stored" || ok "unknown health values are rejected"
+
+  # The option lists have to reach the browser or the dropdowns are empty.
+  LISTS=$(api "$BASE_URL/api/crm/clients")
+  echo "$LISTS" | grep -q '"terms":\["Retainer"' && ok "terms options served" || bad "terms options missing"
+  echo "$LISTS" | grep -q '"health":\[{"key":"Green"' && ok "health options served" || bad "health options missing"
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$CLID"
 fi
 
@@ -303,6 +334,18 @@ if echo "$FS" | grep -q "\"configured\":true"; then
     HDRS=$(api -D - -o /dev/null "$BASE_URL/api/files/$FID/download")
     echo "$HDRS" | grep -qi "content-disposition: attachment" \
       && ok "download forces attachment disposition" || bad "download disposition"
+
+    # Moving is metadata only: the object keeps its key, so the same file
+    # must still download byte-for-byte afterwards.
+    MVF=$(api -X POST "$BASE_URL/api/folders" -H 'Content-Type: application/json' \
+      -d '{"name":"Smoke Move Target"}' | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+    api -o /dev/null -X PATCH "$BASE_URL/api/files/$FID" \
+      -H 'Content-Type: application/json' -d "{\"folderId\":$MVF}"
+    api "$BASE_URL/api/files?folder=$MVF" | grep -q "smoke-test.txt" \
+      && ok "a moved file lands in its new folder" || bad "move did not land"
+    [ "$(api "$BASE_URL/api/files/$FID/download")" = "smoke-test-file-contents" ] \
+      && ok "a moved file still downloads intact" || bad "move corrupted the download"
+    api -o /dev/null -X DELETE "$BASE_URL/api/folders/$MVF"
 
     api -o /dev/null -X DELETE "$BASE_URL/api/files/$FID"
     api "$BASE_URL/api/files" | grep -q "smoke-test.txt" \
