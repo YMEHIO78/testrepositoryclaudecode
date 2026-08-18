@@ -388,12 +388,17 @@ Downloads are forced with `Content-Disposition: attachment` plus
 anything path-like. Mail attachments are untrusted; letting the browser
 render one inline would run it in the app's own origin.
 
-## CRM
+## Clients & Leads
 
 Real clients and contacts, replacing the mockup table. Built first
 because everything else references a client — tickets, projects, and
 invoices would otherwise need a fake client link that got rewritten
 later.
+
+The module is called **Clients & Leads** in the UI, but the code keeps
+the shorter internal name: `lib/crm.js`, the `/api/crm/*` routes, and the
+`crm` view id. Renaming those would be churn with no reader on the other
+end, so expect both names and treat them as the same thing.
 
 - **Clients** move through a pipeline: In contact → Engaging → Offer sent
   → Client, plus Lost. Value is stored in cents (exact totals, no float

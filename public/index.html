@@ -464,7 +464,7 @@
 
     <div class="nav-group">
       <div class="nav-label">Clients</div>
-      <button class="nav-btn" data-view="crm">CRM &amp; Leads <span class="nav-badge">14</span></button>
+      <button class="nav-btn" data-view="crm">Clients &amp; Leads <span class="nav-badge">14</span></button>
       <button class="nav-btn" data-view="projects">Projects</button>
       <button class="nav-btn" data-view="tickets">Service Desk <span class="nav-badge">5</span></button>
       <button class="nav-btn" data-view="files">Files &amp; Folders</button>
@@ -527,7 +527,7 @@
 
       <div class="dash-lower">
         <div>
-          <div class="dash-col-head"><h2>Pipeline by stage</h2><a href="#" data-goto="crm">CRM</a></div>
+          <div class="dash-col-head"><h2>Pipeline by stage</h2><a href="#" data-goto="crm">Clients &amp; Leads</a></div>
           <div id="dashPipeline"><p class="msg-snippet">Loading…</p></div>
         </div>
         <div>
@@ -621,7 +621,7 @@
 
     <!-- ================= CRM ================= -->
     <div class="view hidden" id="view-crm">
-      <h1>CRM &amp; Leads</h1>
+      <h1>Clients &amp; Leads</h1>
       <p class="sub">One table for prospects and clients. The stage field carries them from a cold name to a paying retainer; nothing gets re-typed on the way.</p>
 
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
@@ -645,7 +645,7 @@
 
     <!-- ================= CLIENT DETAIL ================= -->
     <div class="view hidden" id="view-client">
-      <a href="#" class="crumb-back" data-goto="crm">← CRM &amp; Leads</a>
+      <a href="#" class="crumb-back" data-goto="crm">← Clients &amp; Leads</a>
       <div id="clientDetail"><p class="msg-snippet">Loading…</p></div>
     </div>
 
@@ -786,7 +786,7 @@
         </table>
       </div>
 
-      <div class="note"><b>No per-person access control exists.</b> The app has a single shared login, so everyone who can sign in sees everything — CRM and Finance included. This page records who your people are and what they cost; it does not restrict anything. Giving contractors scoped access would need real per-user accounts first.</div>
+      <div class="note"><b>No per-person access control exists.</b> The app has a single shared login, so everyone who can sign in sees everything — Clients &amp; Leads and Finance included. This page records who your people are and what they cost; it does not restrict anything. Giving contractors scoped access would need real per-user accounts first.</div>
     </div>
 
 
@@ -1787,7 +1787,7 @@
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(d.error || 'Could not add.');
         closeModal();
-        showBanner(`Added ${clientName} to the CRM.`, 'ok');
+        showBanner(`Added ${clientName} to Clients & Leads.`, 'ok');
         loadCrm();
         await loadInbox();
         openMessage(msg.account, msg.id);
@@ -3498,7 +3498,7 @@
     const dollars = client?.valueCents != null ? (client.valueCents / 100) : '';
 
     const modal = openModal({
-      kicker: 'CRM',
+      kicker: 'Clients & Leads',
       title: isEdit ? escapeHtml(client.name) : 'New client',
       body: `
         <label>Client / lead name</label>
