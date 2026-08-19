@@ -59,6 +59,28 @@ work.
 **The deploy is the test.** Read changed code carefully before pushing —
 a syntax error costs a full deploy cycle to discover.
 
+**But you can still parse-check front-end JavaScript.** The repo is
+public, so after pushing, point the browser tool at any live page and
+have it pull the raw file from GitHub and run each inline `<script>`
+through `new Function(src)`:
+
+```js
+const html = await (await fetch(
+  'https://raw.githubusercontent.com/ymehio78/testrepositoryclaudecode/<sha>/public/index.html')).text();
+[...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)]
+  .forEach(m => { try { new Function(m[1]); } catch (e) { console.log('SYNTAX ERROR', e.message); } });
+```
+
+`new Function` parses without executing, so nothing runs and no login is
+needed. This catches the whole class of failure that killed a session
+once already — a duplicate `let` in `public/index.html` is a syntax
+error that takes down the entire front end, and the API smoke tests
+would still pass.
+
+Do not try to preview repo files in the browser pane directly: the repo
+lives outside the working directory, and files outside it render as
+static snapshots with scripts disabled.
+
 ### Deploying
 
 Pushing to GitHub does **not** reliably trigger a deploy, and Railway's
