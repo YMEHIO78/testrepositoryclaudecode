@@ -148,8 +148,12 @@ is documented in `HANDOFF.md`:
   read-only.
 - **Wave uses a Full Access Token, not OAuth.** OAuth requires the end
   user's business to be on a paid tier.
-- **Do not build the "AI Agent" view** that appears in the design
-  reference. The project README explicitly rules it out.
+- **The "AI Agent" view IS built** - see the Assistant section of the
+  README. The old rule against it was overturned deliberately; do not
+  re-apply it. What survives from that rule is the shape: read tools run,
+  write tools only ever queue a proposal, and approving in the UI is the
+  single path by which anything the assistant suggests reaches the data.
+  Do not add a tool that writes directly.
 - **File storage is Railway Buckets, and the alternatives were checked.**
   There is no `pocketdataoffice.com` OneDrive (no Microsoft tenant on the
   domain), Proton Drive has no public API, and self-hosting means a

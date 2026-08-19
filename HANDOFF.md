@@ -46,6 +46,7 @@ lib/people.js          the team roster (no permissions - single shared login)
 lib/packages.js        packages and quantities; client value is derived, never stored
 lib/search.js          search over local records; deliberately excludes mail
 lib/export.js          JSON backup export; strips credentials and file bytes
+lib/agent.js           the AI assistant; write tools queue, never execute
 lib/files.js           file metadata in Postgres, bytes in object storage
 lib/folders.js         the folder tree; deleting one reparents, never cascades
 ```
@@ -54,7 +55,8 @@ Tables: `session`, `mail_accounts`, `oauth_tokens`, `calendar_events`,
 `app_settings`, `booking_event_types`, `booking_availability`, `bookings`,
 `clients`, `contacts`, `tickets`, `ticket_events`, `projects`,
 `project_tasks`, `project_milestones`, `people`, `project_people`,
-`files`, `folders`, `packages`, `client_packages`. Full column-by-column notes in `docs/SCHEMA.md`.
+`files`, `folders`, `packages`, `client_packages`,
+`agent_conversations`, `agent_messages`, `agent_actions`. Full column-by-column notes in `docs/SCHEMA.md`.
 
 ## What is real vs. still mockup
 
@@ -269,5 +271,7 @@ spacing     5 / 10 / 15 / 20 / 30 / 40px
 
 The app now matches this. Create and edit flows open in centred modal
 dialogs (backdrop, Escape-to-close, focus handling). The reference also
-includes an "AI Agent" view — **do not build it**; the project README
-explicitly rules out an AI-agent chat feature.
+includes an "AI Agent" view. It is now **built** as the Assistant view -
+the old rule against it was overturned deliberately. See the Assistant
+section of the README for the safety model; the short version is that
+write tools never execute, they queue a proposal for human approval.

@@ -257,6 +257,38 @@ else
   [ -n "$MEVID" ] && api -o /dev/null -X DELETE "$BASE_URL/api/calendar/events/$MEVID"
 fi
 
+# ----------------------------------------------------------- agent
+
+head_ "AI assistant"
+
+AG=$(api "$BASE_URL/api/agent")
+echo "$AG" | grep -q '"configured"' && ok "assistant status responds" || bad "agent status" "$(echo "$AG" | head -c 150)"
+
+if echo "$AG" | grep -q '"configured":true'; then
+  ok "assistant is configured"
+  echo "$AG" | grep -q '"usage"' && ok "token spend is tracked" || bad "usage missing"
+else
+  ok "assistant not configured — chat checks skipped"
+  # It must degrade, not 500: the view says so and the endpoint refuses.
+  code=$(api -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/agent/conversations/1/messages" \
+    -H 'Content-Type: application/json' -d '{"text":"hello"}')
+  [ "$code" = "503" ] && ok "chat refuses cleanly when unconfigured" \
+    || bad "unconfigured chat" "expected 503, got $code"
+fi
+
+# The approval queue is the safety model, and these two checks are the
+# reason it exists — they hold whether or not a key is configured.
+api "$BASE_URL/api/agent/actions?pending=1" | grep -q '"actions"' \
+  && ok "approval queue responds" || bad "approval queue"
+
+code=$(api -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/agent/actions/999999/approve")
+[ "$code" = "409" ] || [ "$code" = "404" ] \
+  && ok "approving an unknown action is refused" || bad "unknown action" "got $code"
+
+code=$(api -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/agent/actions/1/destroy")
+[ "$code" = "400" ] && ok "only approve and reject are accepted" \
+  || bad "decision validation" "expected 400, got $code"
+
 # --------------------------------------------------------- backup
 
 head_ "Backup export"

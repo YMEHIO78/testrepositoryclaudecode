@@ -179,6 +179,29 @@
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
+  /* Assistant. Chat left, approval queue right — the queue is not a modal
+     or a notification, because a proposed change should be as visible as
+     the conversation that produced it. */
+  .agent-cols{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr);gap:28px;align-items:start;}
+  .agent-h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;color:var(--muted);margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px;}
+  .agent-chat{padding:16px;min-height:280px;max-height:52vh;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+  .agent-turn{display:flex;flex-direction:column;gap:4px;}
+  .agent-turn .who{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .agent-turn .body{font-size:14px;line-height:1.55;white-space:pre-wrap;}
+  .agent-turn.you .body{color:var(--ink);}
+  .agent-turn.tool{font-size:12.5px;color:var(--muted);}
+  .agent-compose{display:flex;gap:8px;align-items:flex-end;margin-top:12px;}
+  .agent-compose textarea{flex:1;font-family:inherit;font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-md);padding:9px 11px;resize:vertical;}
+  .agent-compose textarea:focus{outline:none;border-color:var(--brand);}
+  .agent-action{border:1px solid var(--line);border-radius:var(--radius-md);padding:11px 12px;margin-bottom:10px;background:var(--panel);}
+  .agent-action .what{font-size:14px;font-weight:600;line-height:1.4;}
+  .agent-action .meta{font-size:12px;color:var(--muted);margin-top:3px;}
+  .agent-action .row{display:flex;gap:8px;margin-top:9px;}
+  /* Pending actions get the accent edge; decided ones fade back. */
+  .agent-action[data-status="pending"]{border-left:3px solid var(--brand);}
+  .agent-action[data-status="executed"]{opacity:.6;border-left:3px solid var(--color-file-sheet);}
+  .agent-action[data-status="rejected"]{opacity:.5;}
+  .agent-action[data-status="failed"]{border-left:3px solid var(--red);}
   /* Totals row at the foot of a table. */
   tr.total-row td{background:var(--color-neutral-200);border-bottom:0;}
   /* Pipeline board — the reference's grouped view. Columns are stages,
@@ -559,6 +582,7 @@
 
     <div class="nav-group">
       <div class="nav-label">Dev</div>
+      <button class="nav-btn" data-view="assistant">Assistant</button>
       <button class="nav-btn" data-view="integrations">Integrations</button>
       <button class="nav-btn" data-view="spec">System spec</button>
     </div>
@@ -832,6 +856,30 @@
       <div class="note" id="filesNote"></div>
     </div>
 
+
+    <!-- ================= ASSISTANT ================= -->
+    <div class="view hidden" id="view-assistant">
+      <h1>Assistant</h1>
+      <p class="sub">Reads your records to answer questions. It can also propose changes — those go to the approval queue below and do nothing until you approve them.</p>
+
+      <div class="stat-strip" id="agentStats"></div>
+
+      <div class="agent-cols">
+        <div>
+          <div class="card agent-chat" id="agentChat"></div>
+          <div class="agent-compose">
+            <textarea id="agentInput" rows="2" placeholder="Ask about a client, a ticket, this week…"></textarea>
+            <button type="button" class="btn" id="agentSend">Send</button>
+          </div>
+          <div class="note" id="agentNote"></div>
+        </div>
+
+        <div>
+          <h2 class="agent-h2">Approval queue</h2>
+          <div id="agentQueue"><p class="detail-empty">Nothing waiting.</p></div>
+        </div>
+      </div>
+    </div>
 
     <!-- ================= BACKUP ================= -->
     <div class="view hidden" id="view-backup">
@@ -2621,6 +2669,209 @@
   }
   wireDetailLinks(document.getElementById('clientDetail'));
   wireDetailLinks(document.getElementById('ticketDetail'));
+
+  // --- Assistant ---
+  // Chat on the left, approval queue on the right. The queue is deliberately
+  // not a modal or a toast: a proposed change to client data should be at
+  // least as visible as the sentence that proposed it, and should still be
+  // there tomorrow if nobody decided today.
+  let agentData = { configured: false, conversations: [], pending: [], usage: null };
+  let agentConvId = null;
+  let agentBusy = false;
+
+  async function loadAgent(){
+    const chat = document.getElementById('agentChat');
+    if (!chat) return;
+    try {
+      agentData = await (await fetch('/api/agent')).json();
+    } catch (err) {
+      chat.innerHTML = '<p class="detail-empty">Could not reach the assistant.</p>';
+      return;
+    }
+    renderAgentStats();
+    renderAgentQueue(agentData.pending);
+
+    if (!agentData.configured) {
+      chat.innerHTML = '<p class="detail-empty">Not configured. Set ANTHROPIC_API_KEY in Railway to switch this on.</p>';
+      document.getElementById('agentInput').disabled = true;
+      document.getElementById('agentSend').disabled = true;
+      return;
+    }
+    if (!agentConvId && agentData.conversations.length) {
+      agentConvId = agentData.conversations[0].id;
+      await loadAgentConversation();
+    } else if (!agentConvId) {
+      chat.innerHTML = '<p class="detail-empty">Ask something to start.</p>';
+    }
+  }
+
+  function renderAgentStats(){
+    const u = agentData.usage;
+    document.getElementById('agentStats').innerHTML = `
+      <div class="stat-cell">
+        <span class="label">Awaiting approval</span>
+        <span class="value accent">${agentData.pending.length}</span>
+        <span class="note">nothing applies until you decide</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Model</span>
+        <span class="value small">${escapeHtml(agentData.model || '—')}</span>
+        <span class="note">${agentData.configured ? 'connected' : 'not configured'}</span>
+      </div>
+      <div class="stat-cell">
+        <span class="label">Spent so far</span>
+        <span class="value small">${u ? '$' + (u.estimatedCents / 100).toFixed(2) : '—'}</span>
+        <span class="note">${u ? `${u.inputTokens.toLocaleString()} in · ${u.outputTokens.toLocaleString()} out` : 'no usage yet'}</span>
+      </div>`;
+
+    document.getElementById('agentNote').innerHTML =
+      '<b>What leaves this app.</b> Whatever the assistant reads to answer you — client names, ticket text, '
+      + 'meeting titles — is sent to Anthropic\'s API. It cannot change anything on its own: every write is a '
+      + 'proposal in the queue, and approving is the only thing that touches your data.';
+  }
+
+  // Renders one stored message. Tool calls are shown, not hidden — seeing
+  // which records it read is how you judge whether to trust the answer.
+  function agentTurn(msg){
+    const blocks = Array.isArray(msg.content) ? msg.content : [];
+    const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    const tools = blocks.filter(b => b.type === 'tool_use');
+    const isUser = msg.role === 'user';
+
+    // A user message that is only tool results is plumbing, not something
+    // the owner said — don't render it as if they had.
+    if (isUser && !text && blocks.some(b => b.type === 'tool_result')) return '';
+
+    let html = '';
+    if (text) {
+      html += `<div class="agent-turn ${isUser ? 'you' : ''}">
+        <span class="who">${isUser ? 'You' : 'Assistant'}</span>
+        <span class="body">${escapeHtml(text)}</span>
+      </div>`;
+    }
+    if (tools.length) {
+      html += `<div class="agent-turn tool"><span class="body">${tools
+        .map(t => `· ${escapeHtml(t.name.replace(/_/g, ' '))}`).join('<br>')}</span></div>`;
+    }
+    return html;
+  }
+
+  async function loadAgentConversation(){
+    const chat = document.getElementById('agentChat');
+    if (!agentConvId) return;
+    let d;
+    try {
+      d = await (await fetch(`/api/agent/conversations/${agentConvId}`)).json();
+    } catch (err) {
+      chat.innerHTML = '<p class="detail-empty">Could not load that conversation.</p>';
+      return;
+    }
+    chat.innerHTML = (d.messages || []).map(agentTurn).join('')
+      || '<p class="detail-empty">Ask something to start.</p>';
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function renderAgentQueue(actions){
+    const wrap = document.getElementById('agentQueue');
+    if (!actions.length) {
+      wrap.innerHTML = '<p class="detail-empty">Nothing waiting.</p>';
+      return;
+    }
+    wrap.innerHTML = actions.map(a => `
+      <div class="agent-action" data-status="${escapeHtml(a.status)}">
+        <div class="what">${escapeHtml(a.summary)}</div>
+        <div class="meta">${escapeHtml(a.kind.replace(/_/g, ' '))} · ${escapeHtml(relativeDate(a.createdAt))}
+          ${a.status !== 'pending' ? ' · ' + escapeHtml(a.status) : ''}
+          ${a.result ? '<br>' + escapeHtml(a.result) : ''}</div>
+        ${a.status === 'pending' ? `<div class="row">
+          <button type="button" class="btn" data-approve="${a.id}">Approve</button>
+          <button type="button" class="btn ghost" data-reject="${a.id}">Reject</button>
+        </div>` : ''}
+      </div>`).join('');
+  }
+
+  async function sendAgentMessage(){
+    if (agentBusy || !agentData.configured) return;
+    const input = document.getElementById('agentInput');
+    const text = input.value.trim();
+    if (!text) return;
+
+    if (!agentConvId) {
+      const conv = await (await fetch('/api/agent/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: text.slice(0, 60) }),
+      })).json();
+      agentConvId = conv.id;
+    }
+
+    agentBusy = true;
+    input.value = '';
+    const chat = document.getElementById('agentChat');
+    if (chat.querySelector('.detail-empty')) chat.innerHTML = '';
+    chat.insertAdjacentHTML('beforeend', agentTurn({ role: 'user', content: [{ type: 'text', text }] }));
+    chat.insertAdjacentHTML('beforeend',
+      '<div class="agent-turn tool" id="agentThinking"><span class="body">Working…</span></div>');
+    chat.scrollTop = chat.scrollHeight;
+
+    try {
+      const res = await fetch(`/api/agent/conversations/${agentConvId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'The assistant failed.');
+      await loadAgentConversation();
+      // A turn that queued something must refresh the queue, or the
+      // proposal sits invisible until the next page load.
+      if (d.queued?.length) await loadAgent();
+    } catch (err) {
+      document.getElementById('agentThinking')?.remove();
+      chat.insertAdjacentHTML('beforeend',
+        `<div class="agent-turn tool"><span class="body" style="color:var(--red);">${escapeHtml(err.message)}</span></div>`);
+    } finally {
+      agentBusy = false;
+      document.getElementById('agentThinking')?.remove();
+    }
+  }
+
+  document.getElementById('agentSend').addEventListener('click', sendAgentMessage);
+  document.getElementById('agentInput').addEventListener('keydown', (e) => {
+    // Enter sends, Shift+Enter breaks the line — the usual chat contract.
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAgentMessage(); }
+  });
+
+  document.getElementById('agentQueue').addEventListener('click', async (e) => {
+    const approve = e.target.closest('[data-approve]');
+    const reject = e.target.closest('[data-reject]');
+    if (!approve && !reject) return;
+
+    const id = Number((approve || reject).dataset.approve || (approve || reject).dataset.reject);
+    const action = agentData.pending.find(a => a.id === id);
+    if (approve && !confirm(`Apply this now?\n\n${action ? action.summary : ''}`)) return;
+
+    // Disable the pair immediately: approving twice would be a second
+    // ticket, and the server's guard should not be the only thing
+    // standing between a double-click and duplicate data.
+    (approve || reject).closest('.agent-action')
+      .querySelectorAll('button').forEach(b => { b.disabled = true; });
+
+    try {
+      const res = await fetch(`/api/agent/actions/${id}/${approve ? 'approve' : 'reject'}`, { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Could not apply that.');
+      if (d.status === 'failed') showBanner(`That action failed: ${d.result}`, 'error');
+      else if (d.status === 'executed') showBanner(d.result || 'Done.', 'ok');
+    } catch (err) {
+      showBanner(err.message, 'error');
+    }
+
+    await loadAgent();
+    // Approved writes land in the CRM and service desk, so refresh both
+    // rather than leaving stale figures on the other views.
+    loadCrm(); loadTickets();
+  });
 
   // --- Backup ---
   // Shows what a download would contain before you take one, and is
@@ -5178,7 +5429,7 @@
     loadFinance();
     loadScheduling();
     // CRM before tickets: the ticket editor's client dropdown reads from it.
-    loadCrm().then(loadTickets).then(loadProjects).then(loadPeople).then(loadFiles).then(loadPackages).then(loadBackup);
+    loadCrm().then(loadTickets).then(loadProjects).then(loadPeople).then(loadFiles).then(loadPackages).then(loadBackup).then(loadAgent);
 
     const params = new URLSearchParams(location.search);
     if (params.get('googleConnected')) {

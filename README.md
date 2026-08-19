@@ -2,7 +2,9 @@
 
 Internal ops app — dashboard, inbox, calendar, scheduling, CRM, projects,
 service desk, files, finance, and people — built to replace the earlier
-Notion-based mockup. No Notion dependency, no AI-agent chat feature.
+Notion-based mockup. No Notion dependency. It does now have an AI
+assistant - see the Assistant section - which can read your records and
+propose changes, but never applies one without your approval.
 
 Every view is backed by real data now; only the `System spec` tab is
 still a static reference page. Mail runs on IMAP/SMTP (Outlook was ruled
@@ -388,6 +390,73 @@ Downloads are forced with `Content-Disposition: attachment` plus
 anything path-like. Mail attachments are untrusted; letting the browser
 render one inline would run it in the app's own origin.
 
+## Assistant (AI agent)
+
+A chat that reads this app's records to answer questions, and can propose
+changes to them. **The README used to rule this out**; that decision was
+overturned deliberately, and what survives from it is the safety model
+below.
+
+Set `ANTHROPIC_API_KEY` in Railway to switch it on. Without it the view
+says so and the chat is disabled — nothing else in the app depends on it.
+
+### The safety model — read this before extending it
+
+**Read tools execute immediately. Write tools never execute at all.**
+
+A write tool does not touch the database. It writes a row to
+`agent_actions` with status `pending` and the turn ends. Nothing changes
+until a human opens the approval queue and approves that row. Approving is
+the only code path by which anything the assistant proposes reaches your
+data.
+
+The queue is a **table**, not an in-process callback, because approval
+happens in a later HTTP request — possibly minutes later, possibly after a
+reload, possibly never. A promise waiting on a click survives none of that.
+
+There are exactly two kinds of tool and no third case:
+
+| | Tools | Behaviour |
+|---|---|---|
+| Read | `search_records`, `get_client`, `list_open_tickets` | Run on request; results go straight back to the model |
+| Write | `create_ticket`, `update_ticket`, `create_client`, `update_client` | Queue a proposal; return "queued for approval" |
+
+**Do not add a tool that writes directly.** If a new capability needs to
+change data, it belongs in `WRITE_TOOLS` with a `summarise` function — that
+one line is what a human reads when deciding, so it has to say what will
+actually happen.
+
+### Other decisions
+
+- **Approval is idempotent.** The status flips inside the same statement
+  that claims the row, so a double-click matches no pending row the second
+  time and cannot create two tickets. The UI also disables the buttons on
+  click — the server guard shouldn't be the only thing standing between an
+  impatient click and duplicate data.
+- **Tool calls are shown in the transcript**, not hidden. Seeing which
+  records it read is how you judge whether to trust the answer.
+- **Turns are capped** at 8 model round trips. A confused loop bills until
+  something stops it.
+- **Refusals are handled before reading content.** Opus 5's classifiers can
+  decline with an empty content array; indexing into it would throw rather
+  than explain. Server-side fallbacks are enabled, so a declined request
+  re-runs on Anthropic's recommended fallback instead of failing.
+- **Spend is visible in the UI.** Token counts are stored per message and
+  the view shows a running dollar estimate at list prices. A feature that
+  costs money per use should say what it has cost.
+
+### What leaves the app
+
+Whatever the assistant reads in order to answer — client names, ticket
+text, meeting titles, package prices — is sent to Anthropic's API. That is
+a new data processor alongside Railway, Hostinger, Wave and Calendly, and
+worth knowing about for a consultancy handling client material. The note
+under the chat says so in the UI rather than only here.
+
+Mail bodies are **not** currently exposed to it: there is no read tool for
+the inbox. Adding one would mean client correspondence leaving the app, so
+it is a deliberate omission rather than an oversight.
+
 ## Backup
 
 **Back office → Backup** downloads every database record as one JSON
@@ -699,6 +768,7 @@ lib/people.js           the team roster
 lib/packages.js         service packages; client value is derived from these
 lib/search.js           search across local records (not mail)
 lib/export.js           the JSON backup export; excludes credentials
+lib/agent.js            the AI assistant and its approval queue
 lib/files.js            file metadata in Postgres, bytes in object storage
 lib/folders.js          the folder tree; deleting one reparents, never cascades
 scripts/smoke-test.sh   regression checks against a running instance

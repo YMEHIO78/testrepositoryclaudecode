@@ -123,9 +123,11 @@ Actions right-aligned; destructive action pushed left with `margin-right:auto`.
 
 ## Not built from the reference
 
-The reference includes an **AI Agent** view (chat, agent actions,
-approvals). The project README explicitly rules out an AI-agent chat
-feature — **do not build it**.
+The reference's **AI Agent** view (chat, agent actions, approvals) is
+built, as the Assistant view. Chat on the left, approval queue on the
+right: a proposed change to client data is at least as visible as the
+sentence that proposed it, and it stays there until someone decides.
+Pending actions carry the accent left edge; decided ones fade back.
 
 Everything else in the reference is built: detail pages for clients,
 tickets and projects, and the Projects, Files and People views. They

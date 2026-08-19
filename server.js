@@ -25,6 +25,7 @@ const folders = require('./lib/folders');
 const packages = require('./lib/packages');
 const search = require('./lib/search');
 const exporter = require('./lib/export');
+const agent = require('./lib/agent');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -775,6 +776,90 @@ app.delete('/api/crm/contacts/:id', async (req, res) => {
   const removed = await crm.deleteContact(Number(req.params.id));
   if (!removed) return res.status(404).json({ error: 'Not found.' });
   res.status(204).end();
+});
+
+// --- AI agent ---
+// Read tools run; write tools queue for approval. See lib/agent.js — the
+// split is the safety model, and nothing here should let a write bypass
+// the queue.
+
+app.get('/api/agent', async (req, res) => {
+  try {
+    res.json({
+      configured: agent.isConfigured(),
+      model: agent.MODEL,
+      conversations: agent.isConfigured() ? await agent.listConversations() : [],
+      pending: agent.isConfigured() ? await agent.listActions({ pendingOnly: true }) : [],
+      usage: agent.isConfigured() ? await agent.usage() : null,
+    });
+  } catch (err) {
+    console.error('Failed to load agent state:', err);
+    res.status(500).json({ error: 'Could not load the assistant.' });
+  }
+});
+
+app.get('/api/agent/conversations/:id', async (req, res) => {
+  try {
+    res.json({
+      messages: await agent.loadMessages(Number(req.params.id)),
+      actions: (await agent.listActions())
+        .filter((a) => a.conversationId === Number(req.params.id)),
+    });
+  } catch (err) {
+    console.error('Failed to load conversation:', err);
+    res.status(500).json({ error: 'Could not load that conversation.' });
+  }
+});
+
+app.post('/api/agent/conversations', express.json(), async (req, res) => {
+  try {
+    res.status(201).json(await agent.createConversation((req.body || {}).title));
+  } catch (err) {
+    res.status(500).json({ error: 'Could not start a conversation.' });
+  }
+});
+
+// One user message and the whole tool loop it triggers. Can take a while —
+// several model round trips — so the client shows a spinner rather than
+// this streaming.
+app.post('/api/agent/conversations/:id/messages', express.json(), async (req, res) => {
+  if (!agent.isConfigured()) {
+    return res.status(503).json({ error: 'The assistant is not configured. Set ANTHROPIC_API_KEY.' });
+  }
+  const text = ((req.body || {}).text || '').toString().trim();
+  if (!text) return res.status(400).json({ error: 'Say something first.' });
+
+  try {
+    res.json(await agent.runTurn(Number(req.params.id), text));
+  } catch (err) {
+    console.error('Agent turn failed:', err);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.get('/api/agent/actions', async (req, res) => {
+  try {
+    res.json({ actions: await agent.listActions({ pendingOnly: req.query.pending === '1' }) });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not load the queue.' });
+  }
+});
+
+// The only path by which anything the assistant proposed reaches the
+// database. Approving runs the action; rejecting closes it untouched.
+app.post('/api/agent/actions/:id/:decision', async (req, res) => {
+  const { decision } = req.params;
+  if (decision !== 'approve' && decision !== 'reject') {
+    return res.status(400).json({ error: 'Decision must be approve or reject.' });
+  }
+  try {
+    const action = await agent.decideAction(Number(req.params.id), decision === 'approve');
+    if (!action) return res.status(409).json({ error: 'That action was already decided.' });
+    res.json(action);
+  } catch (err) {
+    console.error('Could not decide action:', err);
+    res.status(500).json({ error: 'Could not apply that decision.' });
+  }
 });
 
 // --- Backup export ---
