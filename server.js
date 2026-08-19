@@ -751,11 +751,15 @@ app.delete('/api/crm/clients/:id', async (req, res) => {
     if (!removed) return res.status(404).json({ error: 'Not found.' });
     res.status(204).end();
   } catch (err) {
-    // 23503 is a foreign-key violation, which here means the client still
-    // has stored systems. That link is RESTRICT rather than CASCADE
-    // precisely so this fails instead of destroying credentials that
-    // cannot be recovered and are not in the backup export.
-    if (err.code === '23503') {
+    // Two codes, not one. Postgres raises 23001 (restrict_violation) for
+    // an ON DELETE RESTRICT link and 23503 (foreign_key_violation) for
+    // NO ACTION — they are different SQLSTATEs, and checking only 23503
+    // let this fall through to a 500. Accept both so the message stays
+    // right if the constraint is ever changed.
+    //
+    // The link is RESTRICT precisely so this fails instead of destroying
+    // credentials that cannot be recovered and are not in the backup.
+    if (err.code === '23001' || err.code === '23503') {
       return res.status(409).json({
         error: 'This client still has stored systems and credentials. '
           + 'Delete those first — they are not in the backup and cannot be recovered.',

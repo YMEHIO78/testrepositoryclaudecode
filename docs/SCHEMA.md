@@ -337,7 +337,11 @@ because none of it is the secret. `client_secrets` holds the value,
 AES-256-GCM encrypted with the same `TOKEN_ENCRYPTION_KEY` as mailbox
 passwords, alongside a plaintext `label`, `kind`, `username` and `notes`.
 
-**`client_systems.client_id` is `ON DELETE RESTRICT`.** Every other
+**`client_systems.client_id` is `ON DELETE RESTRICT`.**
+Note the SQLSTATE: RESTRICT raises **23001** (`restrict_violation`), not
+23503 (`foreign_key_violation`, which is what NO ACTION raises). The
+route checks both — checking only 23503 turned a deliberate 409 into a
+confusing 500. Every other
 relationship in this schema either cascades or nulls out. Here neither is
 safe: these credentials cannot be re-derived, are deliberately absent from
 the backup export, and frequently are not ours to lose — they belong to
