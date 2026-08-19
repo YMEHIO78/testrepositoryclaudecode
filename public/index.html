@@ -449,6 +449,9 @@
   .cal-day{background:var(--panel);min-height:88px;padding:6px;font-size:11px;}
   .cal-day .d{color:var(--muted);font-family:var(--font-mono);}
   .cal-ev{background:var(--brand-soft);color:var(--brand);border-radius:var(--radius-md);padding:2px 5px;font-size:10.5px;margin-top:3px;}
+  /* A meeting attributed to a client gets a left edge, so the grid shows
+     at a glance which blocks are client work and which are your own. */
+  .cal-ev.has-client{border-left:3px solid var(--brand);}
   .cal-head{background:var(--paper);text-align:center;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);padding:6px 0;font-weight:600;}
   .cal-day.outside{background:var(--paper);}
   .cal-day.outside .d{opacity:.45;}
@@ -2195,6 +2198,55 @@
   // Both are aggregate views: they pull from several sources and each
   // section degrades on its own rather than failing the page.
 
+  // Meetings on a client's page: upcoming first, then the history newest
+  // first. Split rather than one long list because "what's next with them"
+  // and "what have we done" are different questions.
+  //
+  // The empty state names the two ways a meeting gets attributed, since
+  // "no meetings" could otherwise mean either none happened or none were
+  // tagged — and those call for different actions.
+  function meetingsMarkup(meetings){
+    if (!meetings.length) {
+      return '<p class="detail-empty">No meetings linked yet. Pick this client when creating a '
+        + 'calendar event, or add a contact with the email address they book under — bookings '
+        + 'match to a client automatically by the attendee\'s address.</p>';
+    }
+
+    const now = Date.now();
+    const upcoming = meetings
+      .filter(m => new Date(m.startsAt).getTime() >= now)
+      .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+    const past = meetings
+      .filter(m => new Date(m.startsAt).getTime() < now)
+      .sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt));
+
+    const row = (m) => `
+      <div class="detail-row">
+        <span>
+          <b>${escapeHtml(m.title)}</b>
+          <div class="sub">${escapeHtml(meetingWhen(m))}${m.location ? ' · ' + escapeHtml(m.location) : ''}
+            ${m.source !== 'manual' ? ` · <span class="pill grey">${escapeHtml(m.source)}</span>` : ''}</div>
+        </span>
+        <span class="sub">${escapeHtml(relativeDate(m.startsAt))}</span>
+      </div>`;
+
+    return (upcoming.length
+        ? `<p class="detail-empty" style="margin-bottom:4px;">Upcoming</p>${upcoming.map(row).join('')}`
+        : '')
+      + (past.length
+        ? `<p class="detail-empty" style="margin:10px 0 4px;">Previously — ${past.length} meeting${past.length === 1 ? '' : 's'}</p>${past.map(row).join('')}`
+        : '');
+  }
+
+  function meetingWhen(m){
+    const d = new Date(m.startsAt);
+    if (isNaN(d)) return '—';
+    if (m.allDay) return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return d.toLocaleString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+  }
+
   // Which client the detail page is currently showing. The stepper is a
   // delegated handler on a container that outlives any one client, so it
   // cannot close over the id.
@@ -2288,6 +2340,11 @@
               </div>`).join('') + (d.invoiceMatchNote
                 ? `<p class="detail-empty">${escapeHtml(d.invoiceMatchNote)}</p>` : '')
               : `<p class="detail-empty">No Wave invoices matched this client${d.invoiceMatchNote ? ' by customer name' : ' (Wave not connected)'}.</p>`}
+          </div>
+
+          <div class="detail-section">
+            <h2>Meetings</h2>
+            ${meetingsMarkup(d.meetings || [])}
           </div>
 
           <div class="detail-section">
@@ -4926,7 +4983,16 @@
         .sort((a,b) => new Date(a.startsAt) - new Date(b.startsAt));
 
       cell.innerHTML = `<span class="d">${day.getDate()}</span>`
-        + evs.map(ev => `<button type="button" class="cal-ev${ev.source !== 'manual' ? ' synced' : ''}" data-id="${ev.id}" title="${ev.source !== 'manual' ? 'Synced from ' + escapeHtml(ev.source) : ''}">${escapeHtml(eventTimeLabel(ev) + ev.title)}</button>`).join('');
+        + evs.map(ev => {
+            // The tooltip carries the client rather than the label: the
+            // cell is a few characters wide and the title already spends
+            // them. Hovering is where "who was this with" belongs.
+            const tip = [
+              ev.clientName ? `Client: ${ev.clientName}` : '',
+              ev.source !== 'manual' ? `Synced from ${ev.source}` : '',
+            ].filter(Boolean).join(' · ');
+            return `<button type="button" class="cal-ev${ev.source !== 'manual' ? ' synced' : ''}${ev.clientId ? ' has-client' : ''}" data-id="${ev.id}" title="${escapeHtml(tip)}">${escapeHtml(eventTimeLabel(ev) + ev.title)}</button>`;
+          }).join('');
       grid.appendChild(cell);
     }
   }
@@ -4974,6 +5040,11 @@
         <label class="cal-checkbox" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);">
           <input type="checkbox" id="evAllDay" ${event?.allDay ? 'checked' : ''}> All day
         </label>
+        <label>Client</label>
+        <select id="evClient">
+          <option value="">— none —</option>
+          ${crmData.clients.map(c => `<option value="${c.id}" ${event?.clientId === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+        </select>
         <label>Location</label>
         <input type="text" id="evLocation" value="${escapeHtml(event?.location || '')}" placeholder="Zoom link, address…">
         <label>Notes</label>
@@ -5005,6 +5076,7 @@
             startsAt: new Date(startRaw).toISOString(),
             endsAt: endRaw ? new Date(endRaw).toISOString() : null,
             allDay: document.getElementById('evAllDay').checked,
+            clientId: document.getElementById('evClient').value,
             location: document.getElementById('evLocation').value.trim() || null,
             notes: document.getElementById('evNotes').value.trim() || null,
           }),

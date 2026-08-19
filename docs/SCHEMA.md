@@ -270,3 +270,25 @@ Deleting a package that any client carries would cascade its quantities
 away and quietly reduce that client's value, so `removePackage` retires it
 (`active = false`) instead and only hard-deletes when nothing references
 it. Same reasoning as folders: nothing here is backed up.
+
+### `calendar_events.client_id`
+
+Which client a meeting was with. **`ON DELETE SET NULL`, never CASCADE** —
+removing a client must not erase the record of having met them.
+
+Set two ways:
+
+- By hand, from the client dropdown in the calendar event editor.
+- Automatically, when a booking's attendee email matches one of a client's
+  contacts. Both booking paths do this — the native scheduler after its
+  transaction commits (a booking that succeeded must not roll back because
+  a lookup failed), and the Calendly sync on every run.
+
+The Calendly side re-runs the match on every sync rather than only on
+insert, so adding a contact later links the meetings already imported.
+`linkByAttendeeEmail` only fills a `client_id` that is still null, so a
+correction made by hand is never stamped over by the next sync.
+
+Unmatched bookings stay untagged, which is the honest state for an
+enquiry from a stranger. Matching on anything looser than an email — a
+name, say — would put meetings on the wrong client's record.

@@ -210,6 +210,53 @@ else
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$CLID"
 fi
 
+# --------------------------------------------------------- meetings
+
+head_ "Meetings linked to a client"
+
+MC=$(api -X POST "$BASE_URL/api/crm/clients" -H 'Content-Type: application/json' \
+  -d '{"name":"Smoke Meeting Co","stage":"client"}')
+MCID=$(echo "$MC" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+if [ -z "$MCID" ]; then
+  bad "could not create client for meeting tests" "$MC"
+else
+  MEV=$(api -X POST "$BASE_URL/api/calendar/events" -H 'Content-Type: application/json' \
+    -d "{\"title\":\"smoke-test kickoff\",\"startsAt\":\"2031-04-02T15:00:00.000Z\",\"clientId\":\"$MCID\"}")
+  MEVID=$(echo "$MEV" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+  echo "$MEV" | grep -q "\"clientId\":$MCID" && ok "an event can be tagged to a client" \
+    || bad "event not tagged" "$(echo "$MEV" | head -c 150)"
+
+  api "$BASE_URL/api/calendar/events?clientId=$MCID" | grep -q 'smoke-test kickoff' \
+    && ok "events filter by client" || bad "client filter on events"
+
+  api "$BASE_URL/api/crm/clients/$MCID/detail" | grep -q 'smoke-test kickoff' \
+    && ok "the client page lists its meetings" || bad "meetings missing from client detail"
+
+  # Clearing the tag is distinct from leaving it alone: the editor sends
+  # an empty string to unset, and omitting the field must not wipe it.
+  api -o /dev/null -X PATCH "$BASE_URL/api/calendar/events/$MEVID" \
+    -H 'Content-Type: application/json' -d '{"title":"smoke-test kickoff renamed"}'
+  api "$BASE_URL/api/calendar/events?clientId=$MCID" | grep -q 'renamed' \
+    && ok "an unrelated edit keeps the client tag" || bad "edit dropped the client tag"
+
+  api -o /dev/null -X PATCH "$BASE_URL/api/calendar/events/$MEVID" \
+    -H 'Content-Type: application/json' -d '{"clientId":""}'
+  api "$BASE_URL/api/calendar/events?clientId=$MCID" | grep -q 'renamed' \
+    && bad "clearing the client tag did nothing" || ok "the client tag can be cleared"
+
+  # Deleting a client must not delete the record of having met them.
+  api -o /dev/null -X PATCH "$BASE_URL/api/calendar/events/$MEVID" \
+    -H 'Content-Type: application/json' -d "{\"clientId\":\"$MCID\"}"
+  api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$MCID"
+  api "$BASE_URL/api/calendar/events?from=2031-01-01T00:00:00Z&to=2032-01-01T00:00:00Z" \
+    | grep -q 'renamed' \
+    && ok "deleting a client leaves its meetings on the calendar" \
+    || bad "deleting a client destroyed its meeting history"
+
+  [ -n "$MEVID" ] && api -o /dev/null -X DELETE "$BASE_URL/api/calendar/events/$MEVID"
+fi
+
 # --------------------------------------------------------- backup
 
 head_ "Backup export"

@@ -508,7 +508,11 @@ app.post('/api/inbox/reply', express.json(), async (req, res) => {
 
 app.get('/api/calendar/events', async (req, res) => {
   try {
-    res.json(await calendar.listEvents({ from: req.query.from, to: req.query.to }));
+    res.json(await calendar.listEvents({
+      from: req.query.from,
+      to: req.query.to,
+      clientId: req.query.clientId ? Number(req.query.clientId) : null,
+    }));
   } catch (err) {
     console.error('Failed to list events:', err);
     res.status(500).json({ error: 'Could not load events.' });
@@ -629,13 +633,19 @@ app.get('/api/crm/clients/:id/detail', async (req, res) => {
 
     const detail = {
       client, tickets: [], emails: [], invoices: [], files: [],
-      packages: [], warnings: [],
+      packages: [], meetings: [], warnings: [],
     };
 
     try {
       detail.packages = await packages.clientPackages(client.id);
     } catch (err) {
       detail.warnings.push(`Packages unavailable: ${err.message}`);
+    }
+
+    try {
+      detail.meetings = await calendar.listEvents({ clientId: client.id });
+    } catch (err) {
+      detail.warnings.push(`Meetings unavailable: ${err.message}`);
     }
 
     try {
