@@ -325,3 +325,34 @@ creating a second ticket.
 Deliberately a table rather than an in-process callback: approval happens
 in a later HTTP request, possibly after a reload, possibly never. Nothing
 in memory survives that.
+
+### `client_systems` and `client_secrets`
+
+The third-party systems a client uses and the credentials for each.
+**The most sensitive data in the app**, and the only place where a stored
+secret is meant to be read back out.
+
+`client_systems` holds the name, link and notes — none of it encrypted,
+because none of it is the secret. `client_secrets` holds the value,
+AES-256-GCM encrypted with the same `TOKEN_ENCRYPTION_KEY` as mailbox
+passwords, alongside a plaintext `label`, `kind`, `username` and `notes`.
+
+**`client_systems.client_id` is `ON DELETE RESTRICT`.** Every other
+relationship in this schema either cascades or nulls out. Here neither is
+safe: these credentials cannot be re-derived, are deliberately absent from
+the backup export, and frequently are not ours to lose — they belong to
+the client. So deleting a client *fails* while their systems exist, and
+the route turns the foreign-key violation into a 409 that explains why.
+
+**Reads and writes are asymmetric on purpose:**
+
+- Listing never selects `encrypted_value`, `iv` or `auth_tag`. The value
+  is not masked in the response — it is absent from the query.
+- `revealSecret` is the only function that decrypts, takes one id, and
+  bumps `reveal_count` / `last_revealed_at` in the same `UPDATE` that
+  reads the row, so an access cannot happen without leaving a trace.
+- There is no bulk reveal and no export path. The friction is the point.
+
+A decrypt failure on reveal almost always means `TOKEN_ENCRYPTION_KEY`
+was rotated after the secret was stored; the error says so, because GCM's
+own message sends people looking in the wrong place.

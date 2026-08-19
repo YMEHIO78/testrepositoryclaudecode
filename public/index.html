@@ -179,6 +179,17 @@
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
+  /* Client systems and credentials. A revealed value gets a monospace
+     slot that is empty until it is fetched — there is nothing to un-hide
+     because the page never held the value in the first place. */
+  .vault-system{border:1px solid var(--line);border-radius:var(--radius-md);padding:12px 13px;margin-bottom:12px;}
+  .vault-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:9px;border-bottom:1px solid var(--line);}
+  .vault-head a{font-size:12px;margin-left:8px;}
+  .vault-secret{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--line);}
+  .vault-secret:last-child{border-bottom:0;padding-bottom:2px;}
+  .vault-secret .meta{flex:1;min-width:0;font-size:14px;}
+  .vault-value{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;word-break:break-all;max-width:38%;color:var(--brand);}
+  .vault-actions{display:flex;gap:6px;flex:none;align-items:flex-start;}
   /* Assistant. Chat left, approval queue right — the queue is not a modal
      or a notification, because a proposed change should be as visible as
      the conversation that produced it. */
@@ -2391,6 +2402,11 @@
           </div>
 
           <div class="detail-section">
+            <h2>Systems & credentials</h2>
+            <div id="cdVault"><p class="detail-empty">Loading…</p></div>
+          </div>
+
+          <div class="detail-section">
             <h2>Meetings</h2>
             ${meetingsMarkup(d.meetings || [])}
           </div>
@@ -2500,6 +2516,7 @@
     }
 
     paintPkgRows(d.packages || []);
+    loadVault(c.id);
   }
 
   // Dims rows at zero and disables their minus button, the way the
@@ -2669,6 +2686,243 @@
   }
   wireDetailLinks(document.getElementById('clientDetail'));
   wireDetailLinks(document.getElementById('ticketDetail'));
+
+  // --- Client systems and credentials ---
+  // Values are never in the list payload — the server does not select the
+  // encrypted columns at all. Revealing is a separate request per secret,
+  // which is why there is a button rather than an eye toggle on a value
+  // the page already holds.
+  let vaultData = { kinds: [], systems: [] };
+
+  async function loadVault(clientId){
+    const wrap = document.getElementById('cdVault');
+    if (!wrap) return;
+    try {
+      vaultData = await (await fetch(`/api/vault?clientId=${clientId}`)).json();
+    } catch (err) {
+      wrap.innerHTML = '<p class="detail-empty">Could not load credentials.</p>';
+      return;
+    }
+    renderVault(clientId);
+  }
+
+  function renderVault(clientId){
+    const wrap = document.getElementById('cdVault');
+    if (!wrap) return;
+
+    const systems = vaultData.systems || [];
+    wrap.innerHTML = (systems.length ? systems.map(s => `
+      <div class="vault-system" data-system="${s.id}">
+        <div class="vault-head">
+          <span>
+            <b>${escapeHtml(s.name)}</b>
+            ${s.url ? `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" class="sub">open ↗</a>` : ''}
+            ${s.notes ? `<div class="sub">${escapeHtml(s.notes)}</div>` : ''}
+          </span>
+          <span class="vault-actions">
+            <button type="button" class="int-btn" data-addsecret="${s.id}">Add credential</button>
+            <button type="button" class="int-btn" data-editsystem="${s.id}">Edit</button>
+            <button type="button" class="int-btn connected" data-delsystem="${s.id}">Delete</button>
+          </span>
+        </div>
+        ${(s.secrets || []).length ? (s.secrets || []).map(x => `
+          <div class="vault-secret" data-secret="${x.id}">
+            <span class="meta">
+              <b>${escapeHtml(x.label)}</b>
+              <span class="pill grey">${escapeHtml(x.kind.replace('_', ' '))}</span>
+              ${x.username ? `<div class="sub">${escapeHtml(x.username)}</div>` : ''}
+              ${x.notes ? `<div class="sub">${escapeHtml(x.notes)}</div>` : ''}
+              <div class="sub">${x.revealCount ? `revealed ${x.revealCount}× · last ${escapeHtml(relativeDate(x.lastRevealedAt))}` : 'never revealed'}</div>
+            </span>
+            <span class="vault-value" data-value="${x.id}"></span>
+            <span class="vault-actions">
+              <button type="button" class="int-btn" data-reveal="${x.id}">Reveal</button>
+              <button type="button" class="int-btn" data-editsecret="${x.id}">Edit</button>
+              <button type="button" class="int-btn connected" data-delsecret="${x.id}">Delete</button>
+            </span>
+          </div>`).join('')
+          : '<p class="detail-empty">No credentials stored for this system.</p>'}
+      </div>`).join('')
+      : '<p class="detail-empty">No systems recorded for this client yet.</p>')
+      + `<div style="margin-top:10px;"><button type="button" class="btn" data-addsystem="${clientId}">Add system</button></div>`
+      + '<p class="detail-empty" style="margin-top:10px;">Stored encrypted. These are deliberately '
+      + '<b>not</b> in the backup export, so they exist in exactly one place — and deleting a client '
+      + 'is blocked while any of this remains.</p>';
+  }
+
+  function openSystemDialog(clientId, existing){
+    const modal = openModal({
+      kicker: 'Systems & credentials',
+      title: existing ? `Edit ${escapeHtml(existing.name)}` : 'Add system',
+      body: `
+        <label>System</label>
+        <input type="text" id="sysName" value="${existing ? escapeHtml(existing.name) : ''}" placeholder="Databricks, Square POS, Dropbox…">
+        <label>Link</label>
+        <input type="text" id="sysUrl" value="${existing ? escapeHtml(existing.url || '') : ''}" placeholder="https://console…">
+        <label>Notes</label>
+        <input type="text" id="sysNotes" value="${existing ? escapeHtml(existing.notes || '') : ''}" placeholder="Which environment, who owns the account…">`,
+      actions: actionButtons(existing ? 'Save' : 'Add'),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const name = document.getElementById('sysName').value.trim();
+      if (!name) { modalStatus('Give it a name.'); return; }
+      const body = {
+        clientId,
+        name,
+        url: document.getElementById('sysUrl').value.trim() || null,
+        notes: document.getElementById('sysNotes').value.trim() || null,
+      };
+      try {
+        const res = await fetch(existing ? `/api/vault/systems/${existing.id}` : '/api/vault/systems', {
+          method: existing ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save.');
+        closeModal();
+        loadVault(clientId);
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
+  }
+
+  function openSecretDialog(clientId, systemId, existing){
+    const modal = openModal({
+      kicker: 'Credential',
+      title: existing ? `Edit ${escapeHtml(existing.label)}` : 'Add credential',
+      body: `
+        <label>Label</label>
+        <input type="text" id="secLabel" value="${existing ? escapeHtml(existing.label) : ''}" placeholder="Admin login, API key, publishable key…">
+        <div class="cols">
+          <div>
+            <label>Kind</label>
+            <select id="secKind">
+              ${(vaultData.kinds || []).map(k => `<option value="${k}" ${existing && existing.kind === k ? 'selected' : ''}>${escapeHtml(k.replace('_', ' '))}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label>Username / account</label>
+            <input type="text" id="secUser" value="${existing ? escapeHtml(existing.username || '') : ''}" placeholder="Not encrypted">
+          </div>
+        </div>
+        <label>Value${existing ? ' (leave blank to keep the stored one)' : ''}</label>
+        <input type="password" id="secValue" autocomplete="new-password" spellcheck="false" placeholder="${existing ? '••••••••' : 'The secret itself'}">
+        <label>Notes</label>
+        <input type="text" id="secNotes" value="${existing ? escapeHtml(existing.notes || '') : ''}" placeholder="Scope, expiry, who issued it…">
+        <p class="msg-snippet" style="margin-top:var(--space-2);">The value is encrypted before it is stored and is never included when this list loads. Everything else on this form is stored in the clear.</p>`,
+      actions: actionButtons(existing ? 'Save' : 'Add'),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const label = document.getElementById('secLabel').value.trim();
+      const value = document.getElementById('secValue').value;
+      if (!label) { modalStatus('Give it a label.'); return; }
+      if (!existing && !value) { modalStatus('Give it a value.'); return; }
+
+      const body = {
+        systemId,
+        label,
+        kind: document.getElementById('secKind').value,
+        username: document.getElementById('secUser').value.trim() || null,
+        notes: document.getElementById('secNotes').value.trim() || null,
+      };
+      // Only send a value when one was typed, so editing a label does not
+      // wipe the credential.
+      if (value) body.value = value;
+
+      try {
+        const res = await fetch(existing ? `/api/vault/secrets/${existing.id}` : '/api/vault/secrets', {
+          method: existing ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save.');
+        closeModal();
+        loadVault(clientId);
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
+  }
+
+  function findSystem(id){ return (vaultData.systems || []).find(s => s.id === id); }
+  function findSecret(id){
+    for (const s of vaultData.systems || []) {
+      const hit = (s.secrets || []).find(x => x.id === id);
+      if (hit) return { system: s, secret: hit };
+    }
+    return null;
+  }
+
+  document.getElementById('clientDetail').addEventListener('click', async (e) => {
+    const clientId = openClientId;
+
+    const addSys = e.target.closest('[data-addsystem]');
+    if (addSys) { openSystemDialog(clientId, null); return; }
+
+    const editSys = e.target.closest('[data-editsystem]');
+    if (editSys) { openSystemDialog(clientId, findSystem(Number(editSys.dataset.editsystem))); return; }
+
+    const delSys = e.target.closest('[data-delsystem]');
+    if (delSys) {
+      const s = findSystem(Number(delSys.dataset.delsystem));
+      const n = s ? (s.secrets || []).length : 0;
+      if (!confirm(`Delete "${s ? s.name : 'this system'}" and its ${n} credential${n === 1 ? '' : 's'}?\n\n`
+        + 'These are not in the backup export. This cannot be undone.')) return;
+      await fetch(`/api/vault/systems/${delSys.dataset.delsystem}`, { method: 'DELETE' });
+      loadVault(clientId);
+      return;
+    }
+
+    const addSec = e.target.closest('[data-addsecret]');
+    if (addSec) { openSecretDialog(clientId, Number(addSec.dataset.addsecret), null); return; }
+
+    const editSec = e.target.closest('[data-editsecret]');
+    if (editSec) {
+      const found = findSecret(Number(editSec.dataset.editsecret));
+      if (found) openSecretDialog(clientId, found.system.id, found.secret);
+      return;
+    }
+
+    const delSec = e.target.closest('[data-delsecret]');
+    if (delSec) {
+      const found = findSecret(Number(delSec.dataset.delsecret));
+      if (!confirm(`Delete "${found ? found.secret.label : 'this credential'}"? This cannot be undone.`)) return;
+      await fetch(`/api/vault/secrets/${delSec.dataset.delsecret}`, { method: 'DELETE' });
+      loadVault(clientId);
+      return;
+    }
+
+    const reveal = e.target.closest('[data-reveal]');
+    if (reveal) {
+      const id = Number(reveal.dataset.reveal);
+      const slot = document.querySelector(`[data-value="${id}"]`);
+      // Second click hides it again rather than re-fetching.
+      if (slot.dataset.shown === '1') {
+        slot.textContent = '';
+        slot.dataset.shown = '0';
+        reveal.textContent = 'Reveal';
+        return;
+      }
+      try {
+        const res = await fetch(`/api/vault/secrets/${id}/reveal`, { method: 'POST' });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Could not reveal that.');
+        slot.textContent = d.value;
+        slot.dataset.shown = '1';
+        reveal.textContent = 'Hide';
+        try { await navigator.clipboard.writeText(d.value); showBanner('Copied to clipboard.', 'ok'); }
+        catch (copyErr) { /* clipboard needs a secure context and permission; showing it is enough */ }
+      } catch (err) {
+        showBanner(err.message, 'error');
+      }
+      return;
+    }
+  });
 
   // --- Assistant ---
   // Chat on the left, approval queue on the right. The queue is deliberately

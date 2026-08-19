@@ -257,6 +257,64 @@ else
   [ -n "$MEVID" ] && api -o /dev/null -X DELETE "$BASE_URL/api/calendar/events/$MEVID"
 fi
 
+# ------------------------------------------------------------ vault
+
+head_ "Client credentials"
+
+VC=$(api -X POST "$BASE_URL/api/crm/clients" -H 'Content-Type: application/json' \
+  -d '{"name":"Smoke Vault Co","stage":"client"}')
+VCID=$(echo "$VC" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+if [ -z "$VCID" ]; then
+  bad "could not create client for vault tests" "$VC"
+else
+  SYS=$(api -X POST "$BASE_URL/api/vault/systems" -H 'Content-Type: application/json' \
+    -d "{\"clientId\":$VCID,\"name\":\"Smoke Databricks\",\"url\":\"https://example.invalid\"}")
+  SYSID=$(echo "$SYS" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+  [ -n "$SYSID" ] && ok "system created" || bad "system creation" "$SYS"
+
+  SEC=$(api -X POST "$BASE_URL/api/vault/secrets" -H 'Content-Type: application/json' \
+    -d "{\"systemId\":$SYSID,\"label\":\"Smoke API key\",\"kind\":\"api_key\",\"username\":\"svc@example.invalid\",\"value\":\"SUPERSECRETVALUE123\"}")
+  SECID=$(echo "$SEC" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+  [ -n "$SECID" ] && ok "credential stored" || bad "credential creation" "$SEC"
+
+  # The invariant that matters most: a value must never appear in any
+  # response except the one reveal call for that one secret.
+  echo "$SEC" | grep -q 'SUPERSECRETVALUE123' \
+    && bad "the create response echoed the secret back" || ok "creating does not echo the value"
+
+  LIST=$(api "$BASE_URL/api/vault?clientId=$VCID")
+  echo "$LIST" | grep -q 'Smoke API key' && ok "credential is listed" || bad "credential not listed"
+  echo "$LIST" | grep -q 'SUPERSECRETVALUE123' \
+    && bad "the list response contains the secret value" "values must never be listed" \
+    || ok "listing never carries the value"
+
+  # Metadata edits must not disturb the stored value.
+  api -o /dev/null -X PATCH "$BASE_URL/api/vault/secrets/$SECID" \
+    -H 'Content-Type: application/json' -d '{"label":"Smoke API key renamed"}'
+
+  REV=$(api -X POST "$BASE_URL/api/vault/secrets/$SECID/reveal")
+  echo "$REV" | grep -q 'SUPERSECRETVALUE123' \
+    && ok "reveal returns the decrypted value" || bad "reveal failed" "$(echo "$REV" | head -c 200)"
+  echo "$REV" | grep -q '"revealCount":1' \
+    && ok "reveals are counted" || bad "reveal not counted"
+
+  # Deleting a client while credentials remain must fail loudly rather
+  # than cascading them away - they are not in the backup.
+  code=$(api -o /dev/null -w '%{http_code}' -X DELETE "$BASE_URL/api/crm/clients/$VCID")
+  [ "$code" = "409" ] && ok "deleting a client with stored credentials is refused" \
+    || bad "client delete cascaded into credentials" "expected 409, got $code"
+
+  # And the backup must not carry them either.
+  api "$BASE_URL/api/export" | grep -q 'SUPERSECRETVALUE123' \
+    && bad "the backup export contains a client credential" || ok "credentials stay out of the export"
+  api "$BASE_URL/api/export/summary" | grep -q 'client_secrets' \
+    && ok "the export names client_secrets as excluded" || bad "exclusion not declared"
+
+  api -o /dev/null -X DELETE "$BASE_URL/api/vault/systems/$SYSID"
+  api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$VCID"
+fi
+
 # ----------------------------------------------------------- agent
 
 head_ "AI assistant"

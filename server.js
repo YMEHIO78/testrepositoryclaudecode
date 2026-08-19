@@ -26,6 +26,7 @@ const packages = require('./lib/packages');
 const search = require('./lib/search');
 const exporter = require('./lib/export');
 const agent = require('./lib/agent');
+const vault = require('./lib/vault');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -745,9 +746,24 @@ app.patch('/api/crm/clients/:id', express.json(), async (req, res) => {
 });
 
 app.delete('/api/crm/clients/:id', async (req, res) => {
-  const removed = await crm.deleteClient(Number(req.params.id));
-  if (!removed) return res.status(404).json({ error: 'Not found.' });
-  res.status(204).end();
+  try {
+    const removed = await crm.deleteClient(Number(req.params.id));
+    if (!removed) return res.status(404).json({ error: 'Not found.' });
+    res.status(204).end();
+  } catch (err) {
+    // 23503 is a foreign-key violation, which here means the client still
+    // has stored systems. That link is RESTRICT rather than CASCADE
+    // precisely so this fails instead of destroying credentials that
+    // cannot be recovered and are not in the backup export.
+    if (err.code === '23503') {
+      return res.status(409).json({
+        error: 'This client still has stored systems and credentials. '
+          + 'Delete those first — they are not in the backup and cannot be recovered.',
+      });
+    }
+    console.error('Failed to delete client:', err);
+    res.status(500).json({ error: 'Could not delete that client.' });
+  }
 });
 
 app.post('/api/crm/clients/:id/contacts', express.json(), async (req, res) => {
@@ -776,6 +792,101 @@ app.delete('/api/crm/contacts/:id', async (req, res) => {
   const removed = await crm.deleteContact(Number(req.params.id));
   if (!removed) return res.status(404).json({ error: 'Not found.' });
   res.status(204).end();
+});
+
+// --- Client systems and credentials ---
+// The reveal route below is the only way a stored client credential
+// leaves this server. Every other route here returns metadata only, and
+// must keep doing so.
+
+app.get('/api/vault', async (req, res) => {
+  try {
+    res.json({
+      kinds: vault.KINDS,
+      systems: req.query.clientId
+        ? await vault.forClient(Number(req.query.clientId))
+        : await vault.listSystems(null),
+    });
+  } catch (err) {
+    console.error('Failed to load vault:', err);
+    res.status(500).json({ error: 'Could not load credentials.' });
+  }
+});
+
+app.post('/api/vault/systems', express.json(), async (req, res) => {
+  try {
+    const { clientId, name, url, notes } = req.body || {};
+    if (!clientId) return res.status(400).json({ error: 'A client is required.' });
+    res.status(201).json(await vault.createSystem({ clientId: Number(clientId), name, url, notes }));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.patch('/api/vault/systems/:id', express.json(), async (req, res) => {
+  try {
+    const updated = await vault.updateSystem(Number(req.params.id), req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Not found.' });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/vault/systems/:id', async (req, res) => {
+  try {
+    const gone = await vault.deleteSystem(Number(req.params.id));
+    if (!gone) return res.status(404).json({ error: 'Not found.' });
+    res.status(204).end();
+  } catch (err) {
+    console.error('Failed to delete system:', err);
+    res.status(500).json({ error: 'Could not delete that system.' });
+  }
+});
+
+app.post('/api/vault/secrets', express.json(), async (req, res) => {
+  try {
+    const { systemId } = req.body || {};
+    if (!systemId) return res.status(400).json({ error: 'A system is required.' });
+    res.status(201).json(await vault.createSecret({ ...req.body, systemId: Number(systemId) }));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.patch('/api/vault/secrets/:id', express.json(), async (req, res) => {
+  try {
+    const updated = await vault.updateSecret(Number(req.params.id), req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Not found.' });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/vault/secrets/:id', async (req, res) => {
+  try {
+    const gone = await vault.deleteSecret(Number(req.params.id));
+    if (!gone) return res.status(404).json({ error: 'Not found.' });
+    res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: 'Could not delete that credential.' });
+  }
+});
+
+// The one route that decrypts. POST rather than GET on purpose: a GET
+// would land in browser history, proxy logs and the referer header, and
+// be prefetchable. One id per call — there is no bulk reveal.
+app.post('/api/vault/secrets/:id/reveal', async (req, res) => {
+  try {
+    const secret = await vault.revealSecret(Number(req.params.id));
+    if (!secret) return res.status(404).json({ error: 'Not found.' });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(secret);
+  } catch (err) {
+    console.error('Reveal failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- AI agent ---
