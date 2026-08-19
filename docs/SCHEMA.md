@@ -360,3 +360,22 @@ the route turns the foreign-key violation into a 409 that explains why.
 A decrypt failure on reveal almost always means `TOKEN_ENCRYPTION_KEY`
 was rotated after the secret was stored; the error says so, because GCM's
 own message sends people looking in the wrong place.
+
+### Diagrams add no tables
+
+A draw.io diagram is a row in `files` with a `.drawio` name — nothing
+more. `lib/diagrams.js` filters on the extension rather than owning
+storage, so diagrams get folders, client filing, move, delete and the
+backup export from the file machinery already there.
+
+Two consequences worth knowing before changing it:
+
+- **Saving overwrites the same `storage_key`.** `files.replaceContent`
+  keeps the row's id, name and folder and rewrites the object. A file
+  someone linked to stays the file they linked to, and editing does not
+  breed near-identical copies. The bucket has no versioning, so this is
+  destructive by design.
+- **The client detail endpoint splits the two lists.** `detail.files`
+  excludes diagrams and `detail.diagrams` holds them. Anything new that
+  reads `detail.files` will silently not see diagrams — that is
+  intentional, but it is the trap to remember.

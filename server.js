@@ -22,6 +22,7 @@ const projects = require('./lib/projects');
 const people = require('./lib/people');
 const files = require('./lib/files');
 const folders = require('./lib/folders');
+const diagrams = require('./lib/diagrams');
 const packages = require('./lib/packages');
 const search = require('./lib/search');
 const exporter = require('./lib/export');
@@ -634,7 +635,7 @@ app.get('/api/crm/clients/:id/detail', async (req, res) => {
     if (!client) return res.status(404).json({ error: 'Not found.' });
 
     const detail = {
-      client, tickets: [], emails: [], invoices: [], files: [],
+      client, tickets: [], emails: [], invoices: [], files: [], diagrams: [],
       packages: [], meetings: [], warnings: [],
     };
 
@@ -661,6 +662,12 @@ app.get('/api/crm/clients/:id/detail', async (req, res) => {
       // Every file for this client regardless of folder — the point of the
       // client page is "show me everything", not "browse the tree".
       detail.files = await files.listFiles({ clientId: client.id });
+      // Diagrams are files too, so they are filtered out of the Files
+      // list and given their own section — you go to a diagram to open
+      // it in an editor, not to download it, and mixing the two makes
+      // both lists worse.
+      detail.diagrams = detail.files.filter((f) => diagrams.isDiagram(f.name));
+      detail.files = detail.files.filter((f) => !diagrams.isDiagram(f.name));
     } catch (err) {
       detail.warnings.push(`Files unavailable: ${err.message}`);
     }
@@ -1281,6 +1288,102 @@ app.delete('/api/files/:id', async (req, res) => {
 // someone tries to upload.
 app.get('/api/files/status', async (req, res) => {
   res.json(await files.check());
+});
+
+// --- Diagrams (draw.io) ---
+//
+// A diagram is a .drawio file, so these routes are a lens over the file
+// routes above rather than a separate store. The editor page runs
+// draw.io in embed mode and posts the XML back here on save, which is
+// why there is a PUT for content when ordinary files have none: you are
+// editing this file, not replacing one someone sent you.
+
+app.get('/api/diagrams', async (req, res) => {
+  try {
+    res.json({
+      configured: files.isConfigured(),
+      diagrams: await diagrams.listForClient(
+        req.query.clientId ? Number(req.query.clientId) : null),
+    });
+  } catch (err) {
+    console.error('Failed to list diagrams:', err);
+    res.status(500).json({ error: 'Could not load diagrams.' });
+  }
+});
+
+app.post('/api/diagrams', express.json(), async (req, res) => {
+  if (!files.isConfigured()) {
+    return res.status(503).json({ error: 'File storage is not configured.' });
+  }
+  try {
+    const { name, clientId, folderId } = req.body || {};
+    res.status(201).json(await diagrams.create({
+      name,
+      clientId: clientId ? Number(clientId) : null,
+      folderId: folderId ? Number(folderId) : null,
+    }));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/diagrams/:id', async (req, res) => {
+  try {
+    const found = await diagrams.read(Number(req.params.id));
+    // Also the answer for a file that exists but is not a diagram. The
+    // editor should not be a way to pipe any stored file into a
+    // third-party iframe.
+    if (!found) return res.status(404).json({ error: 'No such diagram.' });
+    res.json({
+      id: found.file.id,
+      name: found.file.name,
+      clientId: found.file.clientId,
+      clientName: found.file.clientName,
+      folderId: found.file.folderId,
+      xml: found.xml,
+    });
+  } catch (err) {
+    console.error('Failed to read diagram:', err);
+    res.status(502).json({ error: 'Could not fetch that diagram.' });
+  }
+});
+
+app.put('/api/diagrams/:id', express.json({ limit: '12mb' }), async (req, res) => {
+  try {
+    const saved = await diagrams.save(Number(req.params.id), (req.body || {}).xml);
+    if (!saved) return res.status(404).json({ error: 'No such diagram.' });
+    res.json(saved);
+  } catch (err) {
+    console.error('Failed to save diagram:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Re-filing from inside the editor: rename, and move to another client
+// or folder. Keys left out are left alone, because null clientId is a
+// real value meaning "no client".
+app.patch('/api/diagrams/:id', express.json(), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const patch = {};
+    if ('name' in body) patch.name = body.name;
+    if ('clientId' in body) patch.clientId = body.clientId ? Number(body.clientId) : null;
+    if ('folderId' in body) patch.folderId = body.folderId ? Number(body.folderId) : null;
+
+    const filed = await diagrams.file(Number(req.params.id), patch);
+    if (!filed) return res.status(404).json({ error: 'No such diagram.' });
+    res.json(filed);
+  } catch (err) {
+    console.error('Failed to re-file diagram:', err);
+    res.status(400).json({ error: 'Could not move that diagram.' });
+  }
+});
+
+// The editor itself. A real page rather than a modal so the diagram gets
+// the whole window and draw.io's own shortcuts are not fighting the
+// app's; it is still served from behind the login like everything else.
+app.get('/diagram/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'diagram.html'));
 });
 
 // --- People ---

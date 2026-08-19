@@ -150,6 +150,27 @@ System spec (a static reference page; nothing to wire up)
   `DATABASE_PUBLIC_URL`, and a copy of bucket objects to somewhere else.
   Both have to be driven from outside Railway.
 
+
+### draw.io: what was established
+
+- **app.diagrams.net cannot save into this app.** Its storage picker is a
+  fixed list (Google Drive, OneDrive, Dropbox, GitHub, GitLab, Bitbucket,
+  device). There is no supported plugin API for adding a custom backend,
+  so "click through to draw.io and save back here" is not achievable by
+  linking out. Embed mode is the answer and it is the documented one:
+  the editor hands XML to the host page and the host owns storage.
+- **Embed mode needs no account, no API key and costs nothing.**
+  `embed.diagrams.net/?embed=1&proto=json` plus postMessage.
+- **There is no server-side render.** Rasterising `.drawio` to PNG/SVG
+  requires draw.io's separate export server (another container). Any
+  thumbnail has to come from the browser at save time via
+  `{action:'export'}`. Do not go looking for a Node library for this.
+- **Self-hosting is possible but is a fourth service.** `jgraph/drawio`,
+  Tomcat, ports 8080/8443. Lives under draw.io's GitHub org but its
+  README describes it as derived from a community fork, so it would be
+  ours to keep patched. Only `EDITOR_ORIGIN`/`EDITOR_URL` in
+  `public/diagram.html` would change.
+
 ## Design decisions worth preserving
 
 - **Money is integer cents** throughout, entered as dollars in the UI.

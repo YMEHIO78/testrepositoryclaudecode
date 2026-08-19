@@ -187,3 +187,13 @@ text baseline rather than the cell box and stays put when a `.sub` line
 appears underneath. Icons carry `aria-hidden="true"`: the name sits
 immediately beside them, and a label would just make a screen reader say
 everything twice.
+
+### The diagram icon
+
+Two rounded rectangles joined by an elbow line, at the same 15px as the
+other file icons, in `--color-file-diagram` (a muted indigo, chosen to
+sit apart from the four document hues without leaving the warm palette).
+
+It is the only file icon with **no page outline**. That is the point: a
+diagram opens in an editor instead of downloading, and the icon should
+carry that difference before anyone reads the extension.

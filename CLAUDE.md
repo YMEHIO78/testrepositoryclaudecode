@@ -154,6 +154,14 @@ is documented in `HANDOFF.md`:
   write tools only ever queue a proposal, and approving in the UI is the
   single path by which anything the assistant suggests reaches the data.
   Do not add a tool that writes directly.
+- **draw.io must be embedded, not linked to.** app.diagrams.net saves
+  only to its own fixed list of backends (Drive, OneDrive, Dropbox,
+  GitHub, GitLab, Bitbucket, device) and cannot be taught about this app.
+  Embed mode makes the host page the storage, which is the only way a
+  diagram saves back into a client's folder. There is also no
+  server-side render of `.drawio` without draw.io's separate export
+  server — do not go hunting for a Node library. See the Diagrams
+  section of the README.
 - **File storage is Railway Buckets, and the alternatives were checked.**
   There is no `pocketdataoffice.com` OneDrive (no Microsoft tenant on the
   domain), Proton Drive has no public API, and self-hosting means a

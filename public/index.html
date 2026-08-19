@@ -71,6 +71,7 @@
     --color-file-deck:#b0602a;
     --color-file-doc:#2b5b96;
     --color-file-pdf:#9e2a2b;
+    --color-file-diagram:#5b4b8a;
     --color-neutral-100:#fffdf8;
     --color-neutral-200:#f4f0e6;
     --color-neutral-300:#f0ebe0;
@@ -176,6 +177,7 @@
   .row-icon.deck{color:var(--color-file-deck);}
   .row-icon.doc{color:var(--color-file-doc);}
   .row-icon.pdf{color:var(--color-file-pdf);}
+  .row-icon.diagram{color:var(--color-file-diagram);}
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
@@ -2439,6 +2441,23 @@
                 is not lost, and stops showing once a quantity is set.</p>` : ''}
           </div>
           <div class="detail-section">
+            <h2>Diagrams</h2>
+            ${(d.diagrams || []).length ? (d.diagrams || []).map(g => `
+              <div class="detail-row">
+                <span>
+                  <span class="name-cell">${fileIcon(g.name)}<a href="/diagram/${g.id}"><b>${escapeHtml(g.name)}</b></a></span>
+                  <div class="sub">${escapeHtml(fileSize(g.sizeBytes))}${g.notes ? ' · ' + escapeHtml(g.notes) : ''}</div>
+                </span>
+                <span class="sub">${escapeHtml(timeAgo(g.createdAt))}</span>
+              </div>`).join('')
+              : '<p class="detail-empty">No diagrams for this client yet.</p>'}
+            <div class="detail-row">
+              <span><a data-newdiagram="${c.id}"><b>New diagram</b></a>
+                <div class="sub">Opens draw.io — saves back into this client's folders</div></span>
+            </div>
+          </div>
+
+          <div class="detail-section">
             <h2>Files</h2>
             ${(d.files || []).length ? (d.files || []).slice(0, 12).map(f => `
               <div class="detail-row">
@@ -2546,6 +2565,31 @@
   // server returns the whole recalculated set, which is what the row
   // subtotals and the total are then painted from — the browser never
   // computes money it then displays as authoritative.
+  // A new diagram is created server-side first so the editor always opens
+  // on a real stored file. Creating it on save instead would mean the
+  // first save of every diagram is the one that can fail.
+  document.getElementById('clientDetail').addEventListener('click', async (e) => {
+    const link = e.target.closest('[data-newdiagram]');
+    if (!link) return;
+    e.preventDefault();
+
+    const name = prompt('Name this diagram:', 'Untitled');
+    if (name === null) return;
+
+    try {
+      const res = await fetch('/api/diagrams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, clientId: Number(link.dataset.newdiagram) }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Could not create that diagram.');
+      location.href = `/diagram/${d.id}`;
+    } catch (err) {
+      showBanner(err.message, 'error');
+    }
+  });
+
   document.getElementById('clientDetail').addEventListener('click', async (e) => {
     const btn = e.target.closest('.step-btn');
     if (!btn || btn.disabled) return;
@@ -3464,6 +3508,16 @@
     <rect x="3.9" y="8.3" width="8.2" height="3.4" rx=".5" fill="currentColor" stroke="none"/>
   </svg>`;
 
+  // Two boxes joined by a line: the smallest thing that reads as a
+  // diagram rather than a document. No page outline, because a diagram
+  // opens in an editor instead of downloading like the others.
+  const DIAGRAM_ICON = `<svg class="row-icon diagram" ${DOC_ATTRS}>
+    <rect x="1.9" y="3.2" width="5" height="3.4" rx=".5"/>
+    <rect x="9.1" y="9.4" width="5" height="3.4" rx=".5"/>
+    <path d="M4.4 6.6v3.3a1 1 0 0 0 1 1h3.7" stroke-linecap="round" fill="none"/>
+  </svg>`;
+
+  const DIAGRAM_EXT = ['drawio', 'dio'];
   const SHEET_EXT = ['csv', 'tsv', 'xlsx', 'xls', 'xlsm'];
   const DECK_EXT = ['ppt', 'pptx', 'pps', 'ppsx', 'key'];
   const DOC_EXT = ['doc', 'docx', 'rtf', 'odt', 'txt', 'md'];
@@ -3473,8 +3527,22 @@
   // inconsistent about the MIME type they attach to a .csv (text/plain,
   // application/vnd.ms-excel, or nothing at all), so the extension is the
   // more reliable signal of the two.
+  // A diagram opens in the editor; everything else downloads. Same row,
+  // same icon treatment, different verb — clicking a .drawio to get a
+  // file your browser cannot open is not a useful outcome.
+  function fileLink(f){
+    return isDiagramName(f.name)
+      ? `<a href="/diagram/${f.id}"><b>${escapeHtml(f.name)}</b></a>`
+      : `<a href="/api/files/${f.id}/download" download><b>${escapeHtml(f.name)}</b></a>`;
+  }
+
+  function isDiagramName(name){
+    return DIAGRAM_EXT.includes(String(name || '').split('.').pop().toLowerCase());
+  }
+
   function fileIcon(name){
     const ext = String(name || '').split('.').pop().toLowerCase();
+    if (DIAGRAM_EXT.includes(ext)) return DIAGRAM_ICON;
     if (SHEET_EXT.includes(ext)) return SHEET_ICON;
     if (DECK_EXT.includes(ext)) return DECK_ICON;
     if (PDF_EXT.includes(ext)) return PDF_ICON;
@@ -3559,7 +3627,7 @@
 
     const fileRows = filesData.files.map(f => `
       <tr data-id="${f.id}">
-        <td><span class="name-cell">${fileIcon(f.name)}<a href="/api/files/${f.id}/download" download><b>${escapeHtml(f.name)}</b></a></span>
+        <td><span class="name-cell">${fileIcon(f.name)}${fileLink(f)}</span>
           ${f.notes ? `<div class="sub">${escapeHtml(f.notes)}</div>` : ''}</td>
         <td>${f.clientId ? `<a data-client="${f.clientId}">${escapeHtml(f.clientName || '—')}</a>` : '—'}</td>
         <td>${f.projectId ? `<a data-project="${f.projectId}">${escapeHtml(f.projectName || '—')}</a>` : '—'}</td>

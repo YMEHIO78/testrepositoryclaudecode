@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagram · Pocket Data Office</title>
+<style>
+  :root{
+    --color-bg:#faf7f0; --color-surface:#fffdf8; --color-text:#201e1d;
+    --color-accent:#1800ad; --color-accent-2:#a90b56;
+    --color-neutral-300:#f0ebe0; --color-neutral-500:#8a8683; --color-neutral-600:#7d7979;
+    --space-2:8px; --space-3:12px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{display:flex;flex-direction:column;background:var(--color-bg);color:var(--color-text);
+    font-family:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;}
+
+  header{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2) var(--space-3);
+    background:var(--color-surface);border-bottom:1px solid var(--color-neutral-300);flex:0 0 auto;}
+  header .back{color:var(--color-accent);text-decoration:none;font-weight:600;white-space:nowrap;}
+  header .back:hover{text-decoration:underline;}
+  header h1{font-size:15px;margin:0;font-weight:600;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;max-width:38vw;}
+  .filed{font-size:13px;color:var(--color-neutral-600);white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;}
+  .spacer{flex:1 1 auto;}
+  .state{font-size:13px;color:var(--color-neutral-500);white-space:nowrap;}
+  .state.dirty{color:var(--color-accent-2);}
+  .state.error{color:var(--color-accent-2);font-weight:600;}
+  button{font:inherit;font-size:13px;padding:4px 10px;cursor:pointer;background:var(--color-surface);
+    border:1px solid var(--color-neutral-300);border-radius:2px;color:var(--color-text);}
+  button:hover{border-color:var(--color-accent);color:var(--color-accent);}
+
+  #frame{flex:1 1 auto;width:100%;border:0;display:block;background:var(--color-bg);}
+  #fallback{padding:24px;max-width:60ch;line-height:1.5;}
+  #fallback code{background:var(--color-neutral-300);padding:1px 4px;}
+
+  dialog{border:1px solid var(--color-neutral-300);background:var(--color-surface);
+    color:var(--color-text);padding:var(--space-3);min-width:320px;}
+  dialog h2{font-size:14px;margin:0 0 var(--space-3);text-transform:uppercase;letter-spacing:.12em;}
+  dialog label{display:block;font-size:12px;color:var(--color-neutral-600);margin-top:var(--space-2);}
+  dialog select,dialog input{font:inherit;font-size:14px;width:100%;padding:5px;
+    border:1px solid var(--color-neutral-300);background:var(--color-surface);color:var(--color-text);}
+  dialog .row{display:flex;gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-3);}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back" id="back" href="/">&larr; Back</a>
+  <h1 id="title">Loading…</h1>
+  <span class="filed" id="filed"></span>
+  <button type="button" id="refile">File into…</button>
+  <span class="spacer"></span>
+  <span class="state" id="state"></span>
+</header>
+
+<iframe id="frame" title="draw.io diagram editor" hidden></iframe>
+<div id="fallback" hidden></div>
+
+<dialog id="refileDialog">
+  <h2>File this diagram</h2>
+  <label for="dlgName">Name</label>
+  <input type="text" id="dlgName">
+  <label for="dlgClient">Client</label>
+  <select id="dlgClient"></select>
+  <label for="dlgFolder">Folder</label>
+  <select id="dlgFolder"></select>
+  <div class="row">
+    <button type="button" id="dlgCancel">Cancel</button>
+    <button type="button" id="dlgSave">Move</button>
+  </div>
+</dialog>
+
+<script>
+(function(){
+  'use strict';
+
+  // draw.io in embed mode. The editor keeps no storage of its own — it
+  // hands the XML back over postMessage and this page writes it to the
+  // bucket, which is what makes "save straight into a client's folder"
+  // possible at all. Going to app.diagrams.net instead would mean the
+  // editor could only save to Google Drive, OneDrive, Dropbox and the
+  // rest of its fixed list, none of which is this app.
+  var EDITOR_ORIGIN = 'https://embed.diagrams.net';
+  var EDITOR_URL = EDITOR_ORIGIN
+    + '/?embed=1&proto=json&spin=1&libraries=1&noExitBtn=1&configure=1';
+
+  var id = Number(location.pathname.split('/').pop());
+  var frame = document.getElementById('frame');
+  var stateEl = document.getElementById('state');
+  var meta = null;
+  var clients = [];
+  var folders = [];
+  var dirty = false;
+  var autosaveTimer = null;
+
+  function setState(text, kind){
+    stateEl.textContent = text;
+    stateEl.className = 'state' + (kind ? ' ' + kind : '');
+  }
+
+  function fail(html){
+    document.getElementById('fallback').hidden = false;
+    document.getElementById('fallback').innerHTML = html;
+    frame.hidden = true;
+  }
+
+  function describeFiling(){
+    var where = meta && meta.clientName ? meta.clientName : 'No client';
+    document.getElementById('filed').textContent = 'Filed under: ' + where;
+    document.getElementById('back').href = meta && meta.clientId
+      ? '/#client-' + meta.clientId : '/#files';
+  }
+
+  // --- Loading -------------------------------------------------------
+
+  fetch('/api/diagrams/' + id)
+    .then(function(r){
+      if (r.status === 404) throw new Error('That diagram no longer exists.');
+      if (!r.ok) throw new Error('Could not load that diagram.');
+      return r.json();
+    })
+    .then(function(d){
+      meta = d;
+      document.getElementById('title').textContent = d.name;
+      document.title = d.name + ' · Pocket Data Office';
+      describeFiling();
+      frame.hidden = false;
+      frame.src = EDITOR_URL;
+      setState('Opening editor…');
+    })
+    .catch(function(err){
+      document.getElementById('title').textContent = 'Diagram';
+      fail('<p>' + err.message + '</p><p><a href="/">Back to Pocket Data Office</a></p>');
+    });
+
+  // --- The embed protocol --------------------------------------------
+
+  window.addEventListener('message', function(evt){
+    // The editor is a third-party origin, so nothing is trusted until
+    // the sender is checked. Without this any page that got itself into
+    // a frame here could push XML at us and have it saved.
+    if (evt.origin !== EDITOR_ORIGIN) return;
+    if (typeof evt.data !== 'string' || !evt.data) return;
+
+    var msg;
+    try { msg = JSON.parse(evt.data); } catch (e) { return; }
+
+    if (msg.event === 'configure') {
+      // lockdown stops the editor transmitting anywhere other than
+      // between the browser and the storage we hand it — which is this
+      // page. Belt and braces alongside the origin check above.
+      post({ action: 'configure', config: { lockdown: true, compressXml: false } });
+      return;
+    }
+
+    if (msg.event === 'init') {
+      post({ action: 'load', xml: meta.xml, autosave: 1, title: meta.name });
+      setState('Ready');
+      return;
+    }
+
+    if (msg.event === 'autosave') {
+      dirty = true;
+      setState('Unsaved changes', 'dirty');
+      clearTimeout(autosaveTimer);
+      // A save is a bucket write, so changes are coalesced rather than
+      // written on every dragged corner.
+      autosaveTimer = setTimeout(function(){ save(msg.xml, false); }, 2500);
+      return;
+    }
+
+    if (msg.event === 'save') {
+      clearTimeout(autosaveTimer);
+      save(msg.xml, true);
+      return;
+    }
+
+    if (msg.event === 'exit') {
+      leave();
+    }
+  });
+
+  function post(payload){
+    if (frame.contentWindow) frame.contentWindow.postMessage(JSON.stringify(payload), EDITOR_ORIGIN);
+  }
+
+  function save(xml, explicit){
+    if (!xml) return;
+    setState('Saving…');
+    fetch('/api/diagrams/' + id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ xml: xml }),
+    })
+      .then(function(r){
+        if (!r.ok) return r.json().catch(function(){ return {}; }).then(function(d){
+          throw new Error(d.error || 'Save failed.');
+        });
+        dirty = false;
+        var at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setState('Saved ' + at);
+        if (explicit) post({ action: 'status', message: 'Saved', modified: false });
+      })
+      .catch(function(err){
+        // Never claim a save that did not happen — the editor still
+        // holds the work, so the honest state is "not saved".
+        setState(err.message + ' Not saved.', 'error');
+        if (explicit) post({ action: 'status', message: 'Not saved', modified: true });
+      });
+  }
+
+  function leave(){
+    if (dirty && !confirm('This diagram has unsaved changes. Leave anyway?')) return;
+    location.href = document.getElementById('back').href;
+  }
+
+  document.getElementById('back').addEventListener('click', function(e){
+    e.preventDefault();
+    leave();
+  });
+
+  window.addEventListener('beforeunload', function(e){
+    if (!dirty) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  // --- Re-filing ------------------------------------------------------
+
+  var dialog = document.getElementById('refileDialog');
+  var clientSel = document.getElementById('dlgClient');
+  var folderSel = document.getElementById('dlgFolder');
+
+  function loadFolders(clientId){
+    var url = '/api/folders' + (clientId ? '?clientId=' + clientId : '');
+    return fetch(url).then(function(r){ return r.json(); }).then(function(d){
+      folders = d.folders || [];
+      folderSel.innerHTML = '<option value="">(top level)</option>'
+        + folders.map(function(f){
+            return '<option value="' + f.id + '">' + escapeHtml(f.name) + '</option>';
+          }).join('');
+      folderSel.value = meta && meta.folderId ? String(meta.folderId) : '';
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch){
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch];
+    });
+  }
+
+  document.getElementById('refile').addEventListener('click', function(){
+    document.getElementById('dlgName').value = meta ? meta.name : '';
+    fetch('/api/crm/clients')
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        clients = d.clients || [];
+        clientSel.innerHTML = '<option value="">(no client)</option>'
+          + clients.map(function(c){
+              return '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>';
+            }).join('');
+        clientSel.value = meta && meta.clientId ? String(meta.clientId) : '';
+        return loadFolders(clientSel.value);
+      })
+      .then(function(){ dialog.showModal(); })
+      .catch(function(){ setState('Could not load the client list.', 'error'); });
+  });
+
+  // Folders belong to a client, so changing the client changes which
+  // folders are on offer. Keeping the old list would let a diagram be
+  // filed into another client's folder.
+  clientSel.addEventListener('change', function(){ loadFolders(clientSel.value); });
+
+  document.getElementById('dlgCancel').addEventListener('click', function(){ dialog.close(); });
+
+  document.getElementById('dlgSave').addEventListener('click', function(){
+    var body = {
+      name: document.getElementById('dlgName').value,
+      clientId: clientSel.value ? Number(clientSel.value) : null,
+      folderId: folderSel.value ? Number(folderSel.value) : null,
+    };
+    fetch('/api/diagrams/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then(function(r){
+        if (!r.ok) throw new Error('Could not move that diagram.');
+        return r.json();
+      })
+      .then(function(updated){
+        meta.name = updated.name;
+        meta.clientId = updated.clientId;
+        meta.clientName = updated.clientName;
+        meta.folderId = updated.folderId;
+        document.getElementById('title').textContent = updated.name;
+        describeFiling();
+        dialog.close();
+        setState('Filed under ' + (updated.clientName || 'no client'));
+      })
+      .catch(function(err){ setState(err.message, 'error'); });
+  });
+})();
+</script>
+</body>
+</html>

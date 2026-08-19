@@ -315,6 +315,73 @@ else
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$VCID"
 fi
 
+# -------------------------------------------------------- diagrams
+
+head_ "Diagrams"
+
+DC=$(api -X POST "$BASE_URL/api/crm/clients" -H 'Content-Type: application/json' \
+  -d '{"name":"Smoke Diagram Co","stage":"client"}')
+DCID=$(echo "$DC" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+if [ -z "$DCID" ]; then
+  bad "could not create client for diagram tests" "$DC"
+else
+  DG=$(api -X POST "$BASE_URL/api/diagrams" -H 'Content-Type: application/json' \
+    -d "{\"name\":\"Smoke Architecture\",\"clientId\":$DCID}")
+  DGID=$(echo "$DG" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+  [ -n "$DGID" ] && ok "diagram created" || bad "diagram creation" "$(echo "$DG" | head -c 200)"
+
+  # The extension is what makes draw.io open it as a diagram rather than
+  # as plain XML, so it must be added whether or not the name had one.
+  echo "$DG" | grep -q '"name":"Smoke Architecture.drawio"' \
+    && ok "the .drawio extension is added" || bad "extension not normalised" "$(echo "$DG" | head -c 200)"
+
+  READ=$(api "$BASE_URL/api/diagrams/$DGID")
+  echo "$READ" | grep -q 'mxGraphModel' \
+    && ok "a new diagram opens as a real empty page" || bad "blank diagram is not valid mxfile"
+
+  # A save must round-trip: what the editor posts is what comes back.
+  api -o /dev/null -X PUT "$BASE_URL/api/diagrams/$DGID" -H 'Content-Type: application/json' \
+    -d '{"xml":"<mxfile host=\"smoke\"><diagram name=\"P\">MARKERXYZ</diagram></mxfile>"}'
+  api "$BASE_URL/api/diagrams/$DGID" | grep -q 'MARKERXYZ' \
+    && ok "saving round-trips the diagram" || bad "save did not round-trip"
+
+  # Editing must not pile up copies - the whole point of replaceContent.
+  N=$(api "$BASE_URL/api/diagrams?clientId=$DCID" | grep -o '"id":[0-9]*' | wc -l)
+  [ "$N" -eq 1 ] && ok "saving edits in place rather than adding a file" \
+    || bad "saving created extra files" "expected 1 diagram, found $N"
+
+  # Diagrams are files, but they must not appear in the client's Files
+  # list twice over - they get their own section.
+  DETAIL=$(api "$BASE_URL/api/crm/clients/$DCID/detail")
+  echo "$DETAIL" | grep -q '"diagrams"' \
+    && ok "the client detail carries a diagrams list" || bad "no diagrams key on client detail"
+
+  # The editor route must refuse ordinary files. It hands bytes to a
+  # third-party iframe, so it is not a general file reader.
+  TXT=$(api -X POST "$BASE_URL/api/files?name=smoke-note.txt&clientId=$DCID" \
+    -H 'Content-Type: text/plain' --data-binary 'not a diagram')
+  TXTID=$(echo "$TXT" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+  if [ -n "$TXTID" ]; then
+    code=$(api -o /dev/null -w '%{http_code}' "$BASE_URL/api/diagrams/$TXTID")
+    [ "$code" = "404" ] && ok "the editor refuses files that are not diagrams" \
+      || bad "a non-diagram file was readable as a diagram" "expected 404, got $code"
+    api -o /dev/null -X DELETE "$BASE_URL/api/files/$TXTID"
+  else
+    bad "could not upload a control file" "$(echo "$TXT" | head -c 160)"
+  fi
+
+  # Re-filing from inside the editor: the move that makes "save into a
+  # client's folder" mean anything.
+  MOVED=$(api -X PATCH "$BASE_URL/api/diagrams/$DGID" -H 'Content-Type: application/json' \
+    -d '{"clientId":null}')
+  echo "$MOVED" | grep -q '"clientId":null' \
+    && ok "a diagram can be re-filed to no client" || bad "re-filing failed" "$(echo "$MOVED" | head -c 160)"
+
+  api -o /dev/null -X DELETE "$BASE_URL/api/files/$DGID"
+  api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$DCID"
+fi
+
 # ----------------------------------------------------------- agent
 
 head_ "AI assistant"

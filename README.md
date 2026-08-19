@@ -778,3 +778,80 @@ CLAUDE.md               working notes for Claude Code
 package.json
 .env.example          placeholders for the secrets you'll need
 ```
+
+## Diagrams (draw.io)
+
+Diagrams live on each client's detail page, in their own section above
+Files. Clicking one opens a full-page editor at `/diagram/:id`; "New
+diagram" creates one already filed under that client.
+
+**There is no diagrams table.** A diagram is a `.drawio` file in the
+`files` table like any other, which is what lets it inherit folders,
+client filing, move, delete and the backup export without a line of
+extra code. `lib/diagrams.js` is a lens over `lib/files.js`, not a
+parallel store. The client detail endpoint splits them out of the Files
+list so they are not listed twice.
+
+### Why the editor is embedded rather than a link to draw.io
+
+This was the whole design question, because the two obvious wants pull
+against each other: *click a diagram and be taken to draw.io*, and *save
+straight back into a client's folder*.
+
+You cannot have both by linking out. app.diagrams.net saves to a fixed
+list of backends — Google Drive, OneDrive, Dropbox, GitHub, GitLab,
+Bitbucket, the local device — and there is no supported way to add a
+seventh. Send someone there and the diagram can come back only by being
+downloaded and re-uploaded by hand.
+
+Embed mode inverts that relationship. `embed.diagrams.net` holds no
+storage of its own: it takes the XML from the page that framed it and
+posts the XML back on save (`{event:'save', xml}`), leaving the host to
+decide where that goes. So the app becomes the storage backend, and
+"save into a client's folder" is the normal case rather than a feature
+draw.io would have to support. The editor is served full-page instead of
+in a modal so it still *feels* like going to draw.io.
+
+The protocol is in `public/diagram.html`:
+
+| Direction | Message |
+| --- | --- |
+| iframe → app | `{event:'configure'}`, `{event:'init'}`, `{event:'save', xml}`, `{event:'autosave', xml}`, `{event:'exit'}` |
+| app → iframe | `{action:'configure', config}`, `{action:'load', xml, autosave:1}`, `{action:'status', message, modified}` |
+
+Autosaves are coalesced (2.5s) because every save is a bucket write.
+Explicit saves go straight through. A failed save says so and leaves the
+state dirty — the editor still holds the work, so claiming "saved" would
+be the one genuinely dangerous lie this page could tell.
+
+### What is checked, and what is trusted
+
+- `message` handlers drop anything whose `evt.origin` is not
+  `https://embed.diagrams.net`. Without that, any page that got itself
+  framed here could push XML at us and have it written to the bucket.
+- `configure` sets draw.io's `lockdown` option, which disables
+  transmission other than between the browser and the storage it was
+  handed — that is this app.
+- `GET /api/diagrams/:id` 404s for a file that exists but is not a
+  `.drawio`. The editor route hands bytes to a third-party iframe, so it
+  must not double as a general file reader.
+
+Still true regardless: the editor is third-party JavaScript running with
+access to the diagram. The XML moves by `postMessage` and stays in the
+browser by design, but draw.io's docs make no claim either way about
+what their editor transmits, so this is a stated intention rather than
+something the app can enforce. Self-hosting `jgraph/drawio` as another
+Railway service is the only way to make it a guarantee; `EDITOR_ORIGIN`
+and `EDITOR_URL` in `public/diagram.html` are the only two lines that
+would change.
+
+### Known limits
+
+- **No thumbnails.** Rendering a `.drawio` to PNG or SVG server-side
+  needs draw.io's separate export server. Previews would have to be
+  produced in the browser at save time.
+- **No offline editing.** If `embed.diagrams.net` is unreachable the
+  page loads and the diagram does not.
+- **No revision history.** Saving overwrites in place, deliberately —
+  the alternative buries the folder in near-identical copies. The bucket
+  has no versioning, so there is no undo beyond draw.io's own.
