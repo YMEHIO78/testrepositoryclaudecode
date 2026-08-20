@@ -822,6 +822,33 @@ else
   [ "$code" = "200" ] && ok "the file survived its folder being deleted" \
     || bad "file lost with its folder" "got $code"
 
+  # --- what the client page's file browser depends on ---
+  # It calls /api/files?clientId=&folder= and shows exactly one level,
+  # so a folder query must not leak the level above it.
+
+  NEST=$(mkfolder "{\"name\":\"Statements\",\"clientId\":$CLFID}")
+  api -o /dev/null -X POST "$BASE_URL/api/files?name=nested.txt&clientId=$CLFID&folderId=$NEST" \
+    -H 'Content-Type: text/plain' --data-binary 'inside the folder'
+
+  ROOTVIEW=$(api "$BASE_URL/api/files?clientId=$CLFID&folder=root")
+  echo "$ROOTVIEW" | grep -q '"name":"Statements"' \
+    && ok "the client's top level lists its folders" || bad "folder missing at top level"
+  echo "$ROOTVIEW" | grep -q 'nested.txt' \
+    && bad "a file inside a folder showed at the top level" \
+    || ok "the top level does not leak files from inside folders"
+
+  INVIEW=$(api "$BASE_URL/api/files?clientId=$CLFID&folder=$NEST")
+  echo "$INVIEW" | grep -q 'nested.txt' \
+    && ok "opening a folder lists what is in it" || bad "folder contents missing" "$(echo "$INVIEW" | head -c 200)"
+
+  # The path shown under the Files heading comes from this.
+  echo "$INVIEW" | grep -q '"breadcrumb":\[' && echo "$INVIEW" | grep -q 'Statements' \
+    && ok "the folder view carries a breadcrumb for the path" || bad "no breadcrumb for the open folder"
+
+  NESTED_ID=$(echo "$INVIEW" | grep -o '"id":[0-9]*' | tail -1 | cut -d: -f2)
+  api -o /dev/null -X DELETE "$BASE_URL/api/files/$NESTED_ID"
+  api -o /dev/null -X DELETE "$BASE_URL/api/folders/$NEST"
+
   api -o /dev/null -X DELETE "$BASE_URL/api/files/$FA"
   api -o /dev/null -X DELETE "$BASE_URL/api/files/$FB"
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$CLFID"

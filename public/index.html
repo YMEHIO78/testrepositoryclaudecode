@@ -189,6 +189,14 @@
     padding:7px 10px;border-top:1px solid var(--color-divider);font-size:12px;
     color:var(--color-neutral-600);background:var(--color-neutral-200);}
   .arch .detail-empty{padding:14px;margin:0;}
+  /* The path under the Files heading. Always shown, starting at "All
+     files", so the rows below are never ambiguous about which folder
+     they came from — including at the top level. */
+  .cd-crumbs{font-size:12px;color:var(--color-neutral-600);margin:-4px 0 8px;line-height:1.5;}
+  .cd-crumbs a{cursor:pointer;}
+  .cd-crumbs a:hover{text-decoration:underline;}
+  .cd-file-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:10px;}
+  .cd-file-actions a{cursor:pointer;font-size:12px;margin-left:auto;}
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
@@ -2700,20 +2708,17 @@
 
           <div class="detail-section">
             <h2>Files</h2>
-            ${(d.files || []).length ? (d.files || []).slice(0, 12).map(f => `
-              <div class="detail-row">
-                <span>
-                  <span class="name-cell">${fileIcon(f.name)}<a href="/api/files/${f.id}/download" download>${escapeHtml(f.name)}</a></span>
-                  <div class="sub">${escapeHtml(fileSize(f.sizeBytes))}${f.notes ? ' · ' + escapeHtml(f.notes) : ''}</div>
-                </span>
-                <span class="sub">${escapeHtml(timeAgo(f.createdAt))}</span>
-              </div>`).join('')
-              : '<p class="detail-empty">No files for this client yet.</p>'}
-            <div class="detail-row">
-              <span><a data-clientfiles="${c.id}"><b>Open in Files${(d.files || []).length > 12
-                ? ` — ${d.files.length} in total` : ''}</b></a>
-                <div class="sub">Browse folders, upload, and organise</div></span>
+            <!-- Browsable in place. The path sits directly under the
+                 heading so it is always clear which folder the rows
+                 below belong to, and which folder an upload lands in. -->
+            <div class="cd-crumbs" id="cdFilesCrumbs"></div>
+            <div id="cdFiles"><p class="detail-empty">Loading…</p></div>
+            <div class="cd-file-actions">
+              <button type="button" class="int-btn" data-cdnewfolder="${c.id}">New folder</button>
+              <button type="button" class="int-btn" data-cdupload="${c.id}">Upload files</button>
+              <a data-clientfiles="${c.id}">Open in Files &amp; Folders</a>
             </div>
+            <input type="file" id="cdFileInput" multiple hidden>
           </div>
         </div>
 
@@ -2777,6 +2782,12 @@
 
     paintPkgRows(d.packages || []);
     loadVault(c.id);
+
+    // Reset to the top level only when this is a different client.
+    // Re-rendering the same client (after pinning a diagram, say) should
+    // leave you in the folder you were browsing.
+    if (cdFilesClientId !== c.id) { cdFolderId = null; cdFilesClientId = c.id; }
+    loadClientFiles(c.id);
   }
 
   // Dims rows at zero and disables their minus button, the way the
@@ -3002,6 +3013,148 @@
   // which is why there is a button rather than an eye toggle on a value
   // the page already holds.
   let vaultData = { kinds: [], systems: [] };
+
+  // --- Files, browsable from the client page ---
+  //
+  // Reuses /api/files, which already returns one level plus its
+  // breadcrumb, rather than a second endpoint. Navigating folders
+  // re-renders only this section: re-rendering the whole client page
+  // would throw away your scroll position on every click into a folder.
+  let cdFolderId = null;      // null = the client's top level
+  let cdFilesClientId = null; // whose files cdFolderId belongs to
+  let cdFilesData = { files: [], folders: [], breadcrumb: [], configured: false };
+
+  async function loadClientFiles(clientId){
+    const wrap = document.getElementById('cdFiles');
+    if (!wrap) return;
+
+    const params = new URLSearchParams();
+    params.set('clientId', String(clientId));
+    params.set('folder', cdFolderId ? String(cdFolderId) : 'root');
+
+    try {
+      cdFilesData = await (await fetch(`/api/files?${params}`)).json();
+    } catch (err) {
+      wrap.innerHTML = '<p class="detail-empty">Could not load files.</p>';
+      return;
+    }
+    renderClientFiles(clientId);
+  }
+
+  function renderClientFiles(clientId){
+    const wrap = document.getElementById('cdFiles');
+    const crumbs = document.getElementById('cdFilesCrumbs');
+    if (!wrap || !crumbs) return;
+
+    const trail = cdFilesData.breadcrumb || [];
+    crumbs.innerHTML = `<a data-cdcrumb="">All files</a>`
+      + trail.map(f => ` / <a data-cdcrumb="${f.id}">${escapeHtml(f.name)}</a>`).join('');
+
+    const folders = cdFilesData.folders || [];
+    // Diagrams are listed here too, unlike the summary this replaced. A
+    // browser that hides files which really are in the folder sends you
+    // hunting for something the page decided not to mention.
+    const files = cdFilesData.files || [];
+
+    wrap.innerHTML = (folders.length || files.length)
+      ? folders.map(f => `
+          <div class="detail-row">
+            <span class="name-cell">${FOLDER_ICON}<a data-cdfolder="${f.id}"><b>${escapeHtml(f.name)}</b></a></span>
+            <span class="sub">folder</span>
+          </div>`).join('')
+        + files.map(f => `
+          <div class="detail-row">
+            <span>
+              <span class="name-cell">${fileIcon(f.name)}${fileLink(f)}</span>
+              <div class="sub">${escapeHtml(fileSize(f.sizeBytes))}${f.notes ? ' · ' + escapeHtml(f.notes) : ''}</div>
+            </span>
+            <span class="sub">${escapeHtml(timeAgo(f.createdAt))}</span>
+          </div>`).join('')
+      : `<p class="detail-empty">${cdFolderId ? 'This folder is empty.' : 'No files for this client yet.'}</p>`;
+  }
+
+  document.getElementById('clientDetail').addEventListener('click', async (e) => {
+    const clientId = openClientId;
+
+    const crumb = e.target.closest('[data-cdcrumb]');
+    if (crumb) {
+      cdFolderId = crumb.dataset.cdcrumb ? Number(crumb.dataset.cdcrumb) : null;
+      loadClientFiles(clientId);
+      return;
+    }
+
+    const into = e.target.closest('[data-cdfolder]');
+    if (into) {
+      cdFolderId = Number(into.dataset.cdfolder);
+      loadClientFiles(clientId);
+      return;
+    }
+
+    const newFolder = e.target.closest('[data-cdnewfolder]');
+    if (newFolder) {
+      // Deliberately a prompt rather than the Files module's dialog: that
+      // one also asks which client the folder belongs to, which is
+      // already answered by the page you are standing on.
+      const name = prompt('Name the new folder:');
+      if (!name || !name.trim()) return;
+      try {
+        const res = await fetch('/api/folders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim(), clientId, parentId: cdFolderId }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Could not create that folder.');
+        loadClientFiles(clientId);
+      } catch (err) {
+        showBanner(err.message, 'error');
+      }
+      return;
+    }
+
+    const upload = e.target.closest('[data-cdupload]');
+    if (upload) {
+      if (!cdFilesData.configured) { showBanner('File storage is not configured.', 'error'); return; }
+      document.getElementById('cdFileInput').click();
+    }
+  });
+
+  // Uploads land in the folder currently open, filed to this client. No
+  // dialog: both questions the Files module asks are already answered by
+  // where you are standing.
+  document.getElementById('clientDetail').addEventListener('change', async (e) => {
+    if (e.target.id !== 'cdFileInput') return;
+    const picked = Array.from(e.target.files);
+    e.target.value = '';
+    if (!picked.length) return;
+
+    const clientId = openClientId;
+    const failed = [];
+    // Sequential: each request carries a whole file body, so firing them
+    // together would just queue in the browser and blur which one failed.
+    for (let i = 0; i < picked.length; i += 1) {
+      const file = picked[i];
+      showBanner(`Uploading ${i + 1} of ${picked.length}… ${file.name}`, 'ok');
+      try {
+        const params = new URLSearchParams({ name: file.name, clientId: String(clientId) });
+        if (cdFolderId) params.set('folderId', String(cdFolderId));
+        const res = await fetch(`/api/files?${params}`, {
+          method: 'POST',
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          body: file,
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+      } catch (err) {
+        failed.push(`${file.name}: ${err.message}`);
+      }
+    }
+
+    // Name what failed rather than reporting a count — "3 of 4 uploaded"
+    // leaves you to work out which one is missing.
+    if (failed.length) showBanner(failed.join(' · '), 'error');
+    else showBanner(`Uploaded ${picked.length} file${picked.length === 1 ? '' : 's'}.`, 'ok');
+    loadClientFiles(clientId);
+  });
 
   async function loadVault(clientId){
     const wrap = document.getElementById('cdVault');

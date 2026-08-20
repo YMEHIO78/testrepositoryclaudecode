@@ -948,3 +948,34 @@ Consequences worth knowing:
   diagram could be shown on somebody else's page.
 - Deleting a pinned diagram clears the pin (`ON DELETE SET NULL`) rather
   than refusing the delete.
+
+### Browsing files from the client page
+
+The **Files** section on a client's page is a working file browser, not a
+summary. It shows the path directly under the heading (starting at "All
+files"), lists the folders and files at that level, and carries **New
+folder** and **Upload files**.
+
+It calls the same `/api/files?clientId=&folder=` endpoint the Files
+module uses — one level plus its breadcrumb — rather than a second
+endpoint that could drift from it.
+
+Decisions worth keeping:
+
+- **Only this section re-renders when you open a folder.** Re-rendering
+  the whole client page would throw away your scroll position on every
+  click into a folder.
+- **Uploads land in the folder you are looking at**, filed to the client
+  whose page you are on. There is no dialog because both questions the
+  Files module asks are already answered by where you are standing.
+- **The path is shown even at the top level.** A breadcrumb that appears
+  only once you are inside something leaves the first screen ambiguous.
+- **Diagrams appear in this list**, unlike the summary it replaced. A
+  browser that hides files which really are in the folder sends you
+  hunting for something the page chose not to mention. They keep the
+  diagram icon and still open in the editor rather than downloading.
+- **The open folder survives a re-render of the same client** (pinning a
+  diagram, say) but resets when you move to a different client, whose
+  folder ids are unrelated.
+- Failed uploads are named individually. "3 of 4 uploaded" leaves you to
+  work out which one is missing.
