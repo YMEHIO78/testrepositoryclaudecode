@@ -421,6 +421,51 @@ else
     bad "could not upload a control file" "$(echo "$TXT" | head -c 160)"
   fi
 
+  # --- the pinned architecture diagram ---
+
+  PIN=$(api -X PUT "$BASE_URL/api/crm/clients/$DCID/diagram" -H 'Content-Type: application/json' \
+    -d "{\"fileId\":$DGID}")
+  echo "$PIN" | grep -q "\"pinned\":$DGID" \
+    && ok "a diagram can be pinned to a client" || bad "pin failed" "$(echo "$PIN" | head -c 160)"
+
+  api "$BASE_URL/api/crm/clients/$DCID/detail" | grep -q '"pinnedDiagram"' \
+    && ok "the client detail carries the pinned diagram" || bad "pinnedDiagram missing"
+
+  # The preview is put into an <img src> on the client page, so anything
+  # that is not an SVG data URI has to be refused.
+  for bad_preview in 'javascript:alert(1)' 'data:text/html,<script>' 'not a uri'; do
+    code=$(api -o /dev/null -w '%{http_code}' -X PUT "$BASE_URL/api/diagrams/$DGID/preview" \
+      -H 'Content-Type: application/json' -d "{\"preview\":\"$bad_preview\"}")
+    [ "$code" = "400" ] && ok "preview rejects '$bad_preview'" \
+      || bad "a non-SVG preview was accepted" "'$bad_preview' got $code"
+  done
+
+  api -o /dev/null -X PUT "$BASE_URL/api/diagrams/$DGID/preview" \
+    -H 'Content-Type: application/json' \
+    -d '{"preview":"data:image/svg+xml;base64,PHN2Zy8+"}'
+  api "$BASE_URL/api/crm/clients/$DCID/detail" | grep -q 'data:image/svg' \
+    && ok "a stored preview reaches the client page" || bad "preview not returned"
+
+  # Previews are a regenerable cache; the backup is the only copy of
+  # everything else and must not be padded with them.
+  api "$BASE_URL/api/export" | grep -q 'preview_svg' \
+    && bad "the export carries rendered previews" || ok "previews stay out of the export"
+
+  # Pinning another client's diagram would put it on the wrong page.
+  OTHER=$(api -X POST "$BASE_URL/api/crm/clients" -H 'Content-Type: application/json' \
+    -d '{"name":"Smoke Other Co","stage":"lead"}')
+  OTHERID=$(echo "$OTHER" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+  code=$(api -o /dev/null -w '%{http_code}' -X PUT "$BASE_URL/api/crm/clients/$OTHERID/diagram" \
+    -H 'Content-Type: application/json' -d "{\"fileId\":$DGID}")
+  [ "$code" = "400" ] && ok "a diagram cannot be pinned to another client" \
+    || bad "cross-client pin allowed" "expected 400, got $code"
+  api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$OTHERID"
+
+  api -o /dev/null -X PUT "$BASE_URL/api/crm/clients/$DCID/diagram" \
+    -H 'Content-Type: application/json' -d '{"fileId":null}'
+  api "$BASE_URL/api/crm/clients/$DCID/detail" | grep -q '"pinnedDiagram":null' \
+    && ok "a diagram can be unpinned" || bad "unpin failed"
+
   # Re-filing from inside the editor: the move that makes "save into a
   # client's folder" mean anything.
   MOVED=$(api -X PATCH "$BASE_URL/api/diagrams/$DGID" -H 'Content-Type: application/json' \

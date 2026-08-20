@@ -178,6 +178,19 @@
       return;
     }
 
+    // The rendered copy that client pages show. draw.io can only do this
+    // in the browser — there is no server-side renderer for .drawio
+    // without their separate export server — so it is asked for here,
+    // right after a save, while the editor is already holding the graph.
+    if (msg.event === 'export') {
+      fetch('/api/diagrams/' + id + '/preview', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preview: msg.data }),
+      }).catch(function(){ /* the diagram is saved; the preview is a cache */ });
+      return;
+    }
+
     if (msg.event === 'exit') {
       leave();
     }
@@ -203,6 +216,9 @@
         var at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         setState('Saved ' + at);
         if (explicit) post({ action: 'status', message: 'Saved', modified: false });
+        // Refresh the rendered copy so a client page never shows a
+        // picture that disagrees with the file.
+        post({ action: 'export', format: 'svg' });
       })
       .catch(function(err){
         // Never claim a save that did not happen — the editor still

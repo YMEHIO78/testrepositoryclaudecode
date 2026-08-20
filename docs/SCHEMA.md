@@ -393,3 +393,18 @@ IMAP move, so they count mail actually filed rather than mail matched.
 This table holds no mail — the messages live on the IMAP server, and the
 only thing lost with this table is the knowledge of who you had muted,
 which is why it *is* in the backup export.
+
+### `files.preview_svg` and `clients.diagram_file_id`
+
+`preview_svg` is a rendered SVG data URI for a `.drawio` file, produced
+by the editor in the browser and refreshed on every save. It is a cache:
+regenerable, excluded from the backup export, and never the source of
+truth. Capped at 512KB — over that the preview is dropped and the save
+still succeeds.
+
+`clients.diagram_file_id` is the one diagram shown on that client's page.
+`ON DELETE SET NULL` on purpose: deleting a diagram should clear the pin,
+not refuse to delete the file. It is declared after the `files` table in
+`lib/migrate.js` rather than beside the other client columns, because the
+foreign key needs `files` to exist — declaring it with the other client
+columns works on an existing database and fails on a fresh one.

@@ -814,6 +814,9 @@ app.get('/api/crm/clients/:id/detail', async (req, res) => {
       // both lists worse.
       detail.diagrams = detail.files.filter((f) => diagrams.isDiagram(f.name));
       detail.files = detail.files.filter((f) => !diagrams.isDiagram(f.name));
+      // Carries the rendered SVG, which is why it is fetched separately
+      // rather than being one of the rows above.
+      detail.pinnedDiagram = await diagrams.pinnedFor(client.id);
     } catch (err) {
       detail.warnings.push(`Files unavailable: ${err.message}`);
     }
@@ -1501,6 +1504,32 @@ app.put('/api/diagrams/:id', express.json({ limit: '12mb' }), async (req, res) =
     res.json(saved);
   } catch (err) {
     console.error('Failed to save diagram:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// The rendered preview, produced by the editor in the browser after a
+// save. Separate from the save itself so a failed export never costs you
+// the diagram — the .drawio is the real thing, the SVG is a cache.
+app.put('/api/diagrams/:id/preview', express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    const { preview } = req.body || {};
+    const result = await diagrams.savePreview(Number(req.params.id),
+      preview === null ? null : preview);
+    if (!result) return res.status(404).json({ error: 'No such diagram.' });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Which diagram shows on a client's page.
+app.put('/api/crm/clients/:id/diagram', express.json(), async (req, res) => {
+  try {
+    const { fileId } = req.body || {};
+    res.json(await diagrams.pin(Number(req.params.id),
+      fileId ? Number(fileId) : null));
+  } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });

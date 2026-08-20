@@ -178,6 +178,17 @@
   .row-icon.doc{color:var(--color-file-doc);}
   .row-icon.pdf{color:var(--color-file-pdf);}
   .row-icon.diagram{color:var(--color-file-diagram);}
+  /* The pinned architecture diagram. Height-capped so a tall diagram
+     cannot push the rest of the client page off the screen, and
+     scrollable rather than cropped so nothing is silently hidden. */
+  .arch{margin:0;border:1px solid var(--color-divider);border-radius:var(--radius-md);
+    background:var(--color-surface);overflow:hidden;}
+  .arch a{display:block;max-height:420px;overflow:auto;padding:10px;}
+  .arch img{display:block;max-width:100%;height:auto;margin:0 auto;}
+  .arch figcaption{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:7px 10px;border-top:1px solid var(--color-divider);font-size:12px;
+    color:var(--color-neutral-600);background:var(--color-neutral-200);}
+  .arch .detail-empty{padding:14px;margin:0;}
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
@@ -2643,6 +2654,30 @@
                 is not lost, and stops showing once a quantity is set.</p>` : ''}
           </div>
           <div class="detail-section">
+            <h2>Data architecture</h2>
+            ${d.pinnedDiagram ? `
+              <figure class="arch">
+                ${d.pinnedDiagram.preview
+                  // An <img>, never innerHTML: an SVG injected into the
+                  // page could carry script and would run in this origin.
+                  // As an image source it cannot.
+                  ? `<a href="/diagram/${d.pinnedDiagram.id}" title="Open in the editor">
+                       <img src="${escapeHtml(d.pinnedDiagram.preview)}" alt="Data architecture for ${escapeHtml(c.name)}">
+                     </a>`
+                  : `<p class="detail-empty">No rendered copy yet —
+                       <a href="/diagram/${d.pinnedDiagram.id}">open it once</a>
+                       and it will appear here. draw.io renders in the browser, so
+                       nothing else can produce the picture.</p>`}
+                <figcaption>
+                  ${escapeHtml(d.pinnedDiagram.name)}
+                  <button type="button" class="int-btn" data-unpin="${c.id}">Remove</button>
+                </figcaption>
+              </figure>`
+              : `<p class="detail-empty">No diagram shown here yet. Pick one below to
+                   put it on this page.</p>`}
+          </div>
+
+          <div class="detail-section">
             <h2>Diagrams</h2>
             ${(d.diagrams || []).length ? (d.diagrams || []).map(g => `
               <div class="detail-row">
@@ -2650,7 +2685,11 @@
                   <span class="name-cell">${fileIcon(g.name)}<a href="/diagram/${g.id}"><b>${escapeHtml(g.name)}</b></a></span>
                   <div class="sub">${escapeHtml(fileSize(g.sizeBytes))}${g.notes ? ' · ' + escapeHtml(g.notes) : ''}</div>
                 </span>
-                <span class="sub">${escapeHtml(timeAgo(g.createdAt))}</span>
+                <span class="sub">
+                  ${d.pinnedDiagram && d.pinnedDiagram.id === g.id
+                    ? '<span class="pill grey">shown above</span>'
+                    : `<button type="button" class="int-btn" data-pin="${g.id}" data-client="${c.id}">Show above</button>`}
+                </span>
               </div>`).join('')
               : '<p class="detail-empty">No diagrams for this client yet.</p>'}
             <div class="detail-row">
@@ -2770,6 +2809,30 @@
   // A new diagram is created server-side first so the editor always opens
   // on a real stored file. Creating it on save instead would mean the
   // first save of every diagram is the one that can fail.
+  // Choosing which diagram sits at the top of a client's page.
+  document.getElementById('clientDetail').addEventListener('click', async (e) => {
+    const pin = e.target.closest('[data-pin]');
+    const unpin = e.target.closest('[data-unpin]');
+    if (!pin && !unpin) return;
+
+    const clientId = Number(pin ? pin.dataset.client : unpin.dataset.unpin);
+    const body = { fileId: pin ? Number(pin.dataset.pin) : null };
+    const btn = pin || unpin;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/diagram`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not update that.');
+      openClientDetail(clientId);
+    } catch (err) {
+      btn.disabled = false;
+      showBanner(err.message, 'error');
+    }
+  });
+
   document.getElementById('clientDetail').addEventListener('click', async (e) => {
     const link = e.target.closest('[data-newdiagram]');
     if (!link) return;
