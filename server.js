@@ -23,6 +23,7 @@ const people = require('./lib/people');
 const files = require('./lib/files');
 const folders = require('./lib/folders');
 const diagrams = require('./lib/diagrams');
+const blocklist = require('./lib/blocklist');
 const packages = require('./lib/packages');
 const search = require('./lib/search');
 const exporter = require('./lib/export');
@@ -340,12 +341,33 @@ app.get('/api/inbox', async (req, res) => {
     const errors = [];
     const counts = {};
     let hasMore = false;
+    let filed = 0;
 
     const perAccount = await Promise.all(accounts.map(async (account) => {
       try {
         const result = await mail.fetchMessages(account, { limit: 25, page, search });
         counts[account] = { total: result.total, unseen: result.unseen };
         if (result.hasMore) hasMore = true;
+
+        // Apply the blocklist to what came back. The move is real, so
+        // these leave the inbox on the server rather than being hidden
+        // here — see lib/blocklist.js for why that distinction matters.
+        // A failure to file must not cost you the inbox, so it degrades
+        // to showing the mail.
+        const { keep, file, hits } = await blocklist.partition(result.messages);
+        if (file.length) {
+          try {
+            const junk = await mail.junkFolder(account);
+            if (junk) {
+              await mail.moveMany(account, file.map((m) => m.id), junk);
+              await blocklist.recordFiled(hits);
+              filed += file.length;
+              return keep;
+            }
+          } catch (err) {
+            console.error(`Could not file blocked mail for ${account}:`, err.message);
+          }
+        }
         return result.messages;
       } catch (err) {
         console.error(`Failed to load mail for ${account}:`, err);
@@ -370,7 +392,9 @@ app.get('/api/inbox', async (req, res) => {
       console.error('CRM sender lookup failed:', err.message);
     }
 
-    res.json({ accounts, messages, errors, counts, page, hasMore, search });
+    // `filed` is reported rather than swallowed: mail vanishing from a
+    // page with no explanation is indistinguishable from a bug.
+    res.json({ accounts, messages, errors, counts, page, hasMore, search, filed });
   } catch (err) {
     console.error('Failed to load inbox:', err);
     res.status(502).json({ error: 'Failed to load mail.' });
@@ -431,7 +455,15 @@ app.get('/api/inbox/message', async (req, res) => {
     return res.status(400).json({ error: 'account and uid are required.' });
   }
   try {
-    const message = await mail.getMessage(account, uid);
+    // The spam view opens messages out of the Junk folder, so the client
+    // asks for 'spam' and the server resolves which folder that is —
+    // the name differs per server and is not the browser's business.
+    const mailbox = req.query.mailbox === 'spam'
+      ? await mail.junkFolder(account)
+      : 'INBOX';
+    if (!mailbox) return res.status(404).json({ error: 'This mailbox has no Junk folder.' });
+
+    const message = await mail.getMessage(account, uid, mailbox);
     if (!message) return res.status(404).json({ error: 'That message no longer exists.' });
 
     try {
@@ -478,6 +510,120 @@ app.post('/api/inbox/delete', express.json(), async (req, res) => {
 
 // Turn a sender into a client + contact in one step, so mail from them
 // is labelled from then on.
+// --- Spam ---
+
+// The Junk folder, read the same way the inbox is. Its contents are the
+// mail server's, not this app's: anything the provider's own filter put
+// there shows up here too, which is the point — you can see what was
+// caught rather than trusting that nothing was.
+app.get('/api/inbox/spam', async (req, res) => {
+  const page = Math.max(0, Number(req.query.page) || 0);
+
+  try {
+    const accounts = (await mail.listAccounts())
+      .filter((a) => configuredMailboxes().includes(a));
+
+    const errors = [];
+    let hasMore = false;
+
+    const perAccount = await Promise.all(accounts.map(async (account) => {
+      try {
+        const junk = await mail.junkFolder(account);
+        if (!junk) {
+          errors.push({ account, message: 'No Junk folder on this mailbox.' });
+          return [];
+        }
+        const result = await mail.fetchMessages(account, { limit: 25, page, mailbox: junk });
+        if (result.hasMore) hasMore = true;
+        return result.messages;
+      } catch (err) {
+        console.error(`Failed to load spam for ${account}:`, err);
+        errors.push({ account, message: err.message });
+        return [];
+      }
+    }));
+
+    res.json({
+      accounts,
+      messages: perAccount.flat().sort((a, b) =>
+        new Date(b.receivedDateTime || 0) - new Date(a.receivedDateTime || 0)),
+      errors,
+      page,
+      hasMore,
+    });
+  } catch (err) {
+    console.error('Failed to load spam:', err);
+    res.status(502).json({ error: 'Failed to load spam.' });
+  }
+});
+
+app.post('/api/inbox/spam', express.json(), async (req, res) => {
+  const { account, uid, block } = req.body || {};
+  if (!configuredMailboxes().includes(account)) {
+    return res.status(400).json({ error: 'Unknown mailbox.' });
+  }
+  try {
+    const result = await mail.markSpam(account, uid);
+    // Blocking the sender is a second, opt-in step. Filing one message
+    // and silently muting a sender for ever are different decisions and
+    // should not share a button.
+    let blocked = null;
+    if (block) {
+      const address = String(block).includes('@') ? block : null;
+      if (address) blocked = await blocklist.add(address, 'Blocked from the inbox');
+    }
+    res.json({ ...result, blocked });
+  } catch (err) {
+    console.error('Could not mark spam:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/inbox/not-spam', express.json(), async (req, res) => {
+  const { account, uid, unblock } = req.body || {};
+  if (!configuredMailboxes().includes(account)) {
+    return res.status(400).json({ error: 'Unknown mailbox.' });
+  }
+  try {
+    const result = await mail.notSpam(account, uid);
+    // Moving it back while leaving the sender blocked would file it
+    // again on the next fetch, which looks exactly like a bug.
+    if (unblock) await blocklist.remove(unblock).catch(() => false);
+    res.json(result);
+  } catch (err) {
+    console.error('Could not restore from spam:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/blocked', async (req, res) => {
+  try {
+    res.json({ blocked: await blocklist.list() });
+  } catch (err) {
+    console.error('Failed to list blocked senders:', err);
+    res.status(500).json({ error: 'Could not load the blocklist.' });
+  }
+});
+
+app.post('/api/blocked', express.json(), async (req, res) => {
+  try {
+    const { pattern, note } = req.body || {};
+    res.status(201).json(await blocklist.add(pattern, note));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/blocked/:id', async (req, res) => {
+  try {
+    const removed = await blocklist.remove(req.params.id);
+    if (!removed) return res.status(404).json({ error: 'Not found.' });
+    res.status(204).end();
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.post('/api/inbox/to-client', express.json(), async (req, res) => {
   const { clientName, contactName, email } = req.body || {};
   if (!clientName || !email) {

@@ -315,6 +315,56 @@ else
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$VCID"
 fi
 
+# --------------------------------------------------- spam blocklist
+
+head_ "Spam and blocked senders"
+
+B1=$(api -X POST "$BASE_URL/api/blocked" -H 'Content-Type: application/json' \
+  -d '{"pattern":"Smoke.Spammer@Example.INVALID","note":"smoke test"}')
+B1ID=$(echo "$B1" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+[ -n "$B1ID" ] && ok "sender blocked" || bad "block failed" "$(echo "$B1" | head -c 200)"
+
+# Stored lowercased, or the match against an incoming address misses.
+echo "$B1" | grep -q '"pattern":"smoke.spammer@example.invalid"' \
+  && ok "patterns are normalised to lowercase" || bad "pattern not normalised" "$B1"
+
+B2=$(api -X POST "$BASE_URL/api/blocked" -H 'Content-Type: application/json' \
+  -d '{"pattern":"@smokedomain.invalid"}')
+echo "$B2" | grep -q '"isDomain":true' \
+  && ok "a whole domain can be blocked" || bad "domain block failed" "$B2"
+
+# A blocklist that silently matches nothing is worse than one that
+# refuses the entry, so junk must be rejected rather than stored.
+for junk in 'not an address' 'foo@' '@nodot'; do
+  code=$(api -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/blocked" \
+    -H 'Content-Type: application/json' -d "{\"pattern\":\"$junk\"}")
+  [ "$code" = "400" ] && ok "rejects '$junk'" || bad "accepted a bad pattern" "'$junk' got $code"
+done
+
+api "$BASE_URL/api/blocked" | grep -q 'smoke.spammer@example.invalid' \
+  && ok "blocked senders are listed" || bad "blocklist not listed"
+
+# The blocklist is worth backing up - nobody can reconstruct it later.
+api "$BASE_URL/api/export" | grep -q 'blocked_senders' \
+  && ok "the blocklist is in the backup export" || bad "blocklist missing from export"
+
+# Spam view must respond even when no mailbox has a Junk folder.
+SP=$(api "$BASE_URL/api/inbox/spam")
+echo "$SP" | grep -q '"messages"' \
+  && ok "the spam view responds" || bad "spam view" "$(echo "$SP" | head -c 200)"
+
+# Marking spam has to validate the mailbox, same as every other action.
+code=$(api -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/inbox/spam" \
+  -H 'Content-Type: application/json' -d '{"account":"nope@example.invalid","uid":"1"}')
+[ "$code" = "400" ] && ok "marking spam rejects an unknown mailbox" \
+  || bad "mailbox validation" "expected 400, got $code"
+
+for id in $B1ID $(echo "$B2" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2); do
+  api -o /dev/null -X DELETE "$BASE_URL/api/blocked/$id"
+done
+api "$BASE_URL/api/blocked" | grep -q 'smoke.spammer@example.invalid' \
+  && bad "unblock did not remove the entry" || ok "unblocking removes it"
+
 # -------------------------------------------------------- diagrams
 
 head_ "Diagrams"

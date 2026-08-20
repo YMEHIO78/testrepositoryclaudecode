@@ -256,6 +256,11 @@ System spec (a static reference page; nothing to wire up)
   work. No labels or folders beyond the inbox itself.
 - Unread counts come from IMAP `STATUS (UNSEEN)`, so they are true
   mailbox-wide totals.
+- Inbox: spam. "Mark spam" is a real IMAP move to the Junk folder;
+  "Block sender" is a rule this app applies on fetch, NOT a block at the
+  mail server - mail still arrives and still uses quota. Real blocking
+  would need a Sieve rule or a Hostinger control-panel filter, neither of
+  which has a usable API. Do not describe it to the user as blocking.
 - Wave: invoices, plus expense account balances. Per-expense detail
   (dates, vendors, line items) is impossible - the API is write-only for
   money transactions. See the settled facts above.

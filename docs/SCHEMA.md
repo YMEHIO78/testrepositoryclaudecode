@@ -379,3 +379,17 @@ Two consequences worth knowing before changing it:
   excludes diagrams and `detail.diagrams` holds them. Anything new that
   reads `detail.files` will silently not see diagrams — that is
   intentional, but it is the trap to remember.
+
+### `blocked_senders` — the inbox blocklist
+
+`pattern` is a full address or a domain with a leading `@`, stored
+lowercased and unique. There is deliberately **no** `type` column: the
+leading `@` already says which it is, and a type that can disagree with
+the value is a bug waiting to happen.
+
+`filed_count` / `last_filed_at` are incremented only after a successful
+IMAP move, so they count mail actually filed rather than mail matched.
+
+This table holds no mail — the messages live on the IMAP server, and the
+only thing lost with this table is the knowledge of who you had muted,
+which is why it *is* in the backup export.

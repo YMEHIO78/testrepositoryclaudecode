@@ -855,3 +855,56 @@ would change.
 - **No revision history.** Saving overwrites in place, deliberately —
   the alternative buries the folder in near-identical copies. The bucket
   has no versioning, so there is no undo beyond draw.io's own.
+
+### Spam and blocked senders
+
+The Inbox has a **Spam** tab next to the account tabs, and every message
+carries **Mark spam** and **Block sender**.
+
+**Read this before trusting the word "block".** These are two different
+promises and only one of them is kept here:
+
+- **Mark spam** is real and server-side. The message is moved to the
+  mailbox's Junk folder over IMAP, so it leaves the inbox everywhere —
+  webmail, phone, any other client. The unread badge follows on its own,
+  because that count comes from an IMAP `STATUS (UNSEEN)` on `INBOX`.
+- **Block sender** is a rule *this app* applies when it fetches. It is
+  **not** a block at the mail server. The message is still accepted,
+  still delivered, still counts against the mailbox quota; this app just
+  files it to Junk on sight. If the app never runs, nothing is filed.
+  Real blocking would need a Sieve rule or a filter in Hostinger's
+  control panel, neither of which exposes an API we can drive.
+
+Filing happens during `GET /api/inbox`: the page is fetched, matched
+against the blocklist, and matches are moved in **one** IMAP call rather
+than one per message. The response reports `filed` so the UI can say what
+disappeared — mail vanishing from a page with no explanation is
+indistinguishable from a bug.
+
+A pattern is either a full address (`someone@example.com`) or a domain
+with a leading `@` (`@example.com`), stored lowercased. Anything else is
+rejected rather than stored, because a blocklist entry that silently
+matches nothing is worse than one that refuses to be created.
+
+**Not spam** moves the message back to `INBOX` *and* unblocks the sender.
+Doing only the first would re-file it on the next fetch, which looks
+exactly like a broken button.
+
+### Why the Junk folder is discovered, not named
+
+The same folder is `Junk` on one server, `Spam` on another and
+`INBOX.spam` on a third. `specialUseFolder()` asks the server via the
+IMAP SPECIAL-USE extension (`\Junk`, `\Trash`) and only falls back to
+matching common names if the server advertises nothing. A hard-coded
+name silently creates a folder nobody ever looks in.
+
+Two consequences:
+
+- A mailbox with no Junk folder cannot mark spam at all. It says so
+  rather than inventing one.
+- The Spam view shows the **whole** Junk folder, including whatever your
+  provider's own filter put there. That is deliberate — the point of the
+  view is to see what was caught, not to see only what this app caught.
+
+Opening a message in Junk does **not** mark it read. Reading there is
+inspection, not attention.

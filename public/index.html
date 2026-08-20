@@ -304,6 +304,13 @@
   .msg-row{padding:10px;border-bottom:1px solid var(--line);}
   .msg-row:last-child{border-bottom:none;}
   .msg-row-top{display:flex;gap:10px;align-items:flex-start;}
+  .inbox-tab.spam-tab{margin-left:auto;color:var(--muted);}
+  .inbox-tab.spam-tab.active{color:var(--ink);}
+  .spam-note{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);
+    font-size:12px;color:var(--muted);line-height:1.45;}
+  .spam-note button{flex:none;background:none;border:1px solid var(--line);border-radius:var(--radius-md);
+    padding:4px 9px;font-size:11.5px;color:var(--ink);cursor:pointer;}
+  .spam-note button:hover{background:var(--paper);}
   .msg-actions{display:flex;gap:6px;flex-shrink:0;}
   .msg-actions button{background:none;border:1px solid var(--line);border-radius:var(--radius-md);padding:5px 10px;font-size:11.5px;color:var(--ink);cursor:pointer;}
   .msg-actions button:hover{background:var(--paper);}
@@ -1678,6 +1685,7 @@
   // pane on the right, matching the reference. Bodies are fetched on
   // selection, so the list itself stays fast.
   let inboxData = { accounts: [], messages: [], errors: [], counts: {} };
+  let inboxView = 'inbox';     // 'inbox' | 'spam' — which folder is open
   let inboxFilter = '';        // '' = all mailboxes
   let selectedMailId = null;   // `${account}:${uid}`
   let inboxPage = 0;
@@ -1695,11 +1703,17 @@
     const tabs = [{ key: '', label: 'All mail' }]
       .concat(inboxData.accounts.map(a => ({ key: a, label: a })));
 
+    // Spam is a different folder rather than a different account, so it
+    // sits apart from the account tabs and carries no unread count —
+    // an unread badge on junk would be an invitation to go and read it.
     wrap.innerHTML = tabs.map(t => `
-      <button type="button" class="inbox-tab ${t.key === inboxFilter ? 'active' : ''}" data-tab="${escapeHtml(t.key)}">
+      <button type="button" class="inbox-tab ${inboxView === 'inbox' && t.key === inboxFilter ? 'active' : ''}" data-tab="${escapeHtml(t.key)}">
         <span>${escapeHtml(t.label)}</span>
-        <span class="count">${unreadFor(t.key) || ''}</span>
-      </button>`).join('');
+        <span class="count">${inboxView === 'inbox' ? (unreadFor(t.key) || '') : ''}</span>
+      </button>`).join('')
+      + `<button type="button" class="inbox-tab spam-tab ${inboxView === 'spam' ? 'active' : ''}" data-tab="__spam">
+           <span>Spam</span>
+         </button>`;
   }
 
   function renderInboxPager(){
@@ -1738,7 +1752,18 @@
       return;
     }
 
-    wrap.innerHTML = errors + (list.length ? list.map(m => `
+    // In Junk, say what this folder actually is. Some of what is here
+    // was filed by the blocklist and some by the provider's own filter,
+    // and the difference matters when you are looking for lost mail.
+    const spamNote = inboxView === 'spam'
+      ? `<div class="spam-note">
+           <span>Everything in the Junk folder on the mail server — filed by this app
+             <b>and</b> by your provider's own filter.</span>
+           <button type="button" id="manageBlocked">Blocked senders</button>
+         </div>`
+      : '';
+
+    wrap.innerHTML = errors + spamNote + (list.length ? list.map(m => `
       <button type="button" class="mail-item ${mailKey(m) === selectedMailId ? 'selected' : ''}"
               data-id="${escapeHtml(m.id)}" data-account="${escapeHtml(m.account)}">
         <div class="mail-item-top">
@@ -1751,25 +1776,108 @@
           ${m.client ? `<span style="color:var(--color-accent);">${escapeHtml(m.client.name)}</span>` : ''}
         </div>
       </button>`).join('')
-      : (errors ? '' : '<p class="msg-snippet" style="padding-top:12px;">No messages.</p>'));
+      : (errors ? '' : `<p class="msg-snippet" style="padding-top:12px;">${
+          inboxView === 'spam' ? 'Nothing in Junk.' : 'No messages.'}</p>`));
+
+    const manage = document.getElementById('manageBlocked');
+    if (manage) manage.onclick = openBlockedDialog;
+  }
+
+  // The blocklist as a list you can read and undo, rather than a set of
+  // decisions that disappear the moment they are made.
+  async function openBlockedDialog(){
+    let blocked = [];
+    try {
+      blocked = (await (await fetch('/api/blocked')).json()).blocked || [];
+    } catch (err) { /* shown as empty below */ }
+
+    const modal = openModal({
+      kicker: 'Inbox',
+      title: 'Blocked senders',
+      body: `
+        <p class="msg-snippet">Mail from these is moved to Junk when this app fetches.
+          It is not a block at the mail server — messages still arrive and still take up
+          space; they just do not reach the inbox view.</p>
+        <div id="blockedRows" style="margin:var(--space-3) 0;">
+          ${blocked.length ? blocked.map(b => `
+            <div class="detail-row" data-blocked="${b.id}">
+              <span>
+                <b>${escapeHtml(b.pattern)}</b>
+                ${b.isDomain ? '<span class="pill grey">whole domain</span>' : ''}
+                <div class="sub">${b.filedCount
+                  ? `${b.filedCount} filed · last ${escapeHtml(relativeDate(b.lastFiledAt))}`
+                  : 'nothing filed yet'}</div>
+              </span>
+              <button type="button" class="int-btn" data-unblock="${b.id}">Unblock</button>
+            </div>`).join('')
+            : '<p class="detail-empty">Nothing blocked yet.</p>'}
+        </div>
+        <label>Block another</label>
+        <input type="text" id="blockPattern" placeholder="someone@example.com or @example.com">`,
+      actions: actionButtons('Block'),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+
+    modal.querySelector('#blockedRows').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-unblock]');
+      if (!btn) return;
+      btn.disabled = true;
+      const res = await fetch(`/api/blocked/${btn.dataset.unblock}`, { method: 'DELETE' });
+      if (res.ok) btn.closest('[data-blocked]').remove();
+      else btn.disabled = false;
+    });
+
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const pattern = document.getElementById('blockPattern').value.trim();
+      if (!pattern) { modalStatus('Enter an address or a domain.'); return; }
+      try {
+        const res = await fetch('/api/blocked', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pattern }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Could not block that.');
+        closeModal();
+        // Existing mail from a newly blocked sender is filed on the next
+        // fetch, so reload rather than leaving it sitting there.
+        loadInbox();
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
   }
 
   async function loadInbox(){
     const wrap = document.getElementById('inboxMessages');
     wrap.innerHTML = '<p class="msg-snippet" style="padding-top:12px;">Loading…</p>';
+
+    const spam = inboxView === 'spam';
     try {
       const params = new URLSearchParams();
       if (inboxPage) params.set('page', String(inboxPage));
-      if (inboxSearch) params.set('q', inboxSearch);
-      const res = await fetch(`/api/inbox${params.toString() ? '?' + params : ''}`);
+      if (inboxSearch && !spam) params.set('q', inboxSearch);
+      const url = spam ? '/api/inbox/spam' : '/api/inbox';
+      const res = await fetch(`${url}${params.toString() ? '?' + params : ''}`);
       if (!res.ok) throw new Error('request failed');
-      inboxData = await res.json();
+      const loaded = await res.json();
+      // The spam view has no unread counts of its own; keeping the
+      // inbox's would make the account tabs lie while it is open.
+      inboxData = spam ? { ...loaded, counts: inboxData.counts } : loaded;
     } catch (err) {
-      wrap.innerHTML = '<p class="msg-snippet" style="padding-top:12px;">Could not load mail right now.</p>';
+      wrap.innerHTML = `<p class="msg-snippet" style="padding-top:12px;">Could not load ${spam ? 'spam' : 'mail'} right now.</p>`;
       return;
     }
-    // Only the unfiltered first page is representative of "newest mail".
-    if (!inboxPage && !inboxSearch) dashMailSnapshot = inboxData.messages;
+
+    // Say so when the blocklist quietly removed things, rather than
+    // letting a short page look like missing mail.
+    if (inboxData.filed) {
+      showBanner(`Filed ${inboxData.filed} message${inboxData.filed === 1 ? '' : 's'} from blocked senders to Junk.`, 'ok');
+    }
+
+    // Only the unfiltered first page of real mail is representative of
+    // "newest mail" — spam must never reach the dashboard.
+    if (!spam && !inboxPage && !inboxSearch) dashMailSnapshot = inboxData.messages;
 
     renderInboxTabs();
     renderInboxList();
@@ -1800,6 +1908,22 @@
   document.getElementById('inboxTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.inbox-tab');
     if (!tab) return;
+
+    // Switching between the inbox and Junk is a different folder on the
+    // server, so it needs a fetch; switching account is only a filter on
+    // what is already loaded.
+    const wantSpam = tab.dataset.tab === '__spam';
+    if (wantSpam || inboxView === 'spam') {
+      inboxView = wantSpam ? 'spam' : 'inbox';
+      inboxFilter = wantSpam ? inboxFilter : tab.dataset.tab;
+      inboxPage = 0;
+      selectedMailId = null;
+      document.getElementById('inboxDetail').innerHTML =
+        '<p class="msg-snippet">Select a message.</p>';
+      loadInbox();
+      return;
+    }
+
     inboxFilter = tab.dataset.tab;
     renderInboxTabs();
     renderInboxList();
@@ -1833,7 +1957,8 @@
 
     let msg;
     try {
-      const res = await fetch(`/api/inbox/message?account=${encodeURIComponent(account)}&uid=${encodeURIComponent(uid)}`);
+      const res = await fetch(`/api/inbox/message?account=${encodeURIComponent(account)}&uid=${encodeURIComponent(uid)}`
+        + (inboxView === 'spam' ? '&mailbox=spam' : ''));
       msg = await res.json();
       if (!res.ok) throw new Error(msg.error || 'Could not open that message.');
     } catch (err) {
@@ -1866,6 +1991,10 @@
           ? '<button type="button" data-act="viewclient">View client</button>'
           : '<button type="button" data-act="addclient">Add as client</button>'}
         <button type="button" data-act="unread">Mark unread</button>
+        ${inboxView === 'spam'
+          ? '<button type="button" data-act="notspam">Not spam</button>'
+          : `<button type="button" data-act="spam">Mark spam</button>
+             <button type="button" data-act="block">Block sender</button>`}
         <button type="button" class="danger" data-act="delete">Delete</button>
         ${hasHtml ? '<button type="button" data-act="toggle">View plain text</button>' : ''}
       </div>
@@ -1874,8 +2003,10 @@
     let showingHtml = hasHtml;
     renderMailBody(msg, document.getElementById('mailRead'), showingHtml);
 
-    // Opening marks read, as any mail client does.
-    if (!msg.isRead) {
+    // Opening marks read, as any mail client does — except in Junk,
+    // where reading a message is inspection, not attention, and marking
+    // it read would quietly change state in a folder you are auditing.
+    if (!msg.isRead && inboxView !== 'spam') {
       fetch('/api/inbox/read', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ account: msg.account, uid: msg.id, read: true }),
@@ -1922,6 +2053,63 @@
         } catch (err) {
           btn.disabled = false;
           alert('Could not delete that message.');
+        }
+      } else if (act === 'spam' || act === 'block') {
+        // Blocking is the bigger of the two, so it says out loud what it
+        // will do to future mail before doing it.
+        const blockSender = act === 'block';
+        if (blockSender && !confirm(
+          `Block ${msg.fromAddress}?\n\n`
+          + 'This message and anything else from that sender moves to Junk on the '
+          + 'mail server. It is not a block at the server itself — mail still '
+          + 'arrives, this app files it on sight.')) return;
+
+        btn.disabled = true;
+        try {
+          const res = await fetch('/api/inbox/spam', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              account: msg.account,
+              uid: msg.id,
+              block: blockSender ? msg.fromAddress : null,
+            }),
+          });
+          const d = await res.json();
+          if (!res.ok) throw new Error(d.error || 'Could not file that message.');
+
+          inboxData.messages = inboxData.messages.filter(m => mailKey(m) !== `${msg.account}:${msg.id}`);
+          selectedMailId = null;
+          renderInboxTabs();
+          renderInboxList();
+          detail.innerHTML = `<p class="msg-snippet">Moved to Junk${
+            d.blocked ? ` and blocked ${escapeHtml(d.blocked.pattern)}` : ''}.</p>`;
+        } catch (err) {
+          btn.disabled = false;
+          showBanner(err.message, 'error');
+        }
+      } else if (act === 'notspam') {
+        btn.disabled = true;
+        try {
+          const res = await fetch('/api/inbox/not-spam', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              account: msg.account,
+              uid: msg.id,
+              // Unblock too, or the next fetch files it straight back
+              // and the button looks broken.
+              unblock: msg.fromAddress,
+            }),
+          });
+          const d = await res.json();
+          if (!res.ok) throw new Error(d.error || 'Could not restore that message.');
+
+          inboxData.messages = inboxData.messages.filter(m => mailKey(m) !== `${msg.account}:${msg.id}`);
+          selectedMailId = null;
+          renderInboxList();
+          detail.innerHTML = '<p class="msg-snippet">Moved back to the inbox, and the sender is no longer blocked.</p>';
+        } catch (err) {
+          btn.disabled = false;
+          showBanner(err.message, 'error');
         }
       } else if (act === 'addclient') {
         openAddClientFromEmail(msg);
