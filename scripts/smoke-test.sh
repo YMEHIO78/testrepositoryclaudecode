@@ -10,8 +10,29 @@
 #
 # It creates and deletes records against the target instance, so do not
 # run it while someone is using the app. It cleans up after itself.
+#
+# Leave a few minutes between runs. The public booking endpoint is rate
+# limited, and running this back to back trips the limiter — that shows
+# up as a 429 on the booking check, which is the limiter working, not a
+# booking bug.
 
-set -uo pipefail
+# No `pipefail`, deliberately. Nearly every check here is shaped
+#
+#     api "$BASE_URL/..." | grep -q 'something' && ok "..." || bad "..."
+#
+# and `grep -q` exits the moment it finds a match, closing the pipe while
+# curl is still writing. curl then fails with 23 (write error), and under
+# pipefail that becomes the pipeline's status — so a check that FOUND
+# what it was looking for reports a failure. Measured at roughly 5 runs
+# in 10 against /api/export; it only ever hits checks whose pattern
+# matches, which is why the suite looked green far more often than it
+# was.
+#
+# This is the second bug of this family, after the missing `return 0` in
+# bad() below. Both made the harness lie in the safe-looking direction.
+# Before trusting a run, be sure the harness itself is not the thing
+# under test.
+set -u
 
 BASE_URL="${BASE_URL:-https://pocket-data-office-production.up.railway.app}"
 : "${AUTH_USER:?set AUTH_USER}"
@@ -109,9 +130,18 @@ else
     RESP=$(curl -s --max-time 30 -X POST "$BASE_URL/api/book/$SLUG" -H 'Content-Type: application/json' \
       -d "{\"startsAt\":\"$TARGET\",\"name\":\"Smoke Test\",\"email\":\"smoke@example.com\"}" \
       -w '\n%{http_code}')
-    echo "$RESP" | tail -1 | grep -q '409' \
-      && ok "booking a blocked slot is refused (409)" \
-      || bad "booking a blocked slot" "expected 409, got $(echo "$RESP" | tail -1)"
+    # The booking endpoint is public, so it is rate limited. Running this
+    # suite several times in a row trips that and returns 429, which is
+    # the limiter working rather than the booking check failing — say so,
+    # instead of sending someone to look for a bug in bookings.
+    BOOKCODE=$(echo "$RESP" | tail -1)
+    if [ "$BOOKCODE" = "409" ]; then
+      ok "booking a blocked slot is refused (409)"
+    elif [ "$BOOKCODE" = "429" ]; then
+      bad "booking check was rate limited" "got 429 — wait a few minutes between runs of this suite"
+    else
+      bad "booking a blocked slot" "expected 409, got $BOOKCODE"
+    fi
 
     [ -n "$EVID" ] && api -o /dev/null -X DELETE "$BASE_URL/api/calendar/events/$EVID"
   fi
