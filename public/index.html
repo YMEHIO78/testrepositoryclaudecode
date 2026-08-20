@@ -197,6 +197,12 @@
   .cd-crumbs a:hover{text-decoration:underline;}
   .cd-file-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:10px;}
   .cd-file-actions a{cursor:pointer;font-size:12px;margin-left:auto;}
+  .tpl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;}
+  .tpl-bar select{font:inherit;font-size:12px;padding:4px 6px;border:1px solid var(--color-divider);
+    background:var(--color-surface);color:var(--color-text);border-radius:var(--radius-md);max-width:220px;}
+  /* Unfilled placeholders are a "look at this before you send" note, not
+     an error — the message is still perfectly sendable once you edit it. */
+  .tpl-warn{font-size:12px;color:var(--color-accent-2);}
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
@@ -2156,6 +2162,119 @@
     });
   }
 
+  // --- Email templates ---
+
+  let templatesData = { templates: [], placeholders: {} };
+
+  async function loadTemplates(){
+    try {
+      templatesData = await (await fetch('/api/templates')).json();
+    } catch (err) {
+      templatesData = { templates: [], placeholders: {} };
+    }
+    return templatesData;
+  }
+
+  async function fillTemplatePicker(select){
+    if (!select) return;
+    const d = await loadTemplates();
+    if (!d.templates.length) {
+      select.innerHTML = '<option value="">No templates yet</option>';
+      select.disabled = true;
+      return;
+    }
+    select.disabled = false;
+    select.innerHTML = '<option value="">Insert a template…</option>'
+      + d.templates.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+  }
+
+  async function openTemplatesDialog(){
+    const d = await loadTemplates();
+
+    const modal = openModal({
+      kicker: 'Inbox',
+      title: 'Email templates',
+      body: `
+        <p class="msg-snippet">Reusable reply bodies. There is no subject field —
+          replies and forwards keep the subject of the thread they belong to.</p>
+        <div id="tplRows" style="margin:var(--space-3) 0;">
+          ${d.templates.length ? d.templates.map(t => `
+            <div class="detail-row" data-tpl="${t.id}">
+              <span>
+                <b>${escapeHtml(t.name)}</b>
+                <div class="sub">${t.usedCount
+                  ? `used ${t.usedCount}×`
+                  : 'never used'} · ${escapeHtml((t.body || '').slice(0, 60))}${(t.body || '').length > 60 ? '…' : ''}</div>
+              </span>
+              <span class="vault-actions">
+                <button type="button" class="int-btn" data-tpledit="${t.id}">Edit</button>
+                <button type="button" class="int-btn connected" data-tpldel="${t.id}">Delete</button>
+              </span>
+            </div>`).join('')
+            : '<p class="detail-empty">No templates yet.</p>'}
+        </div>
+        <label>Name</label>
+        <input type="text" id="tplName" placeholder="Intro call follow-up">
+        <label>Body</label>
+        <textarea id="tplBody" rows="7" style="width:100%;font:inherit;font-size:14px;padding:8px;
+          border:1px solid var(--color-divider);background:var(--color-surface);color:var(--color-text);
+          resize:vertical;" placeholder="Hi {{first_name}},"></textarea>
+        <p class="msg-snippet" style="margin-top:var(--space-2);">
+          Placeholders: ${Object.entries(d.placeholders || {})
+            .map(([k, why]) => `<code>${escapeHtml(k)}</code> — ${escapeHtml(why)}`)
+            .join('<br>')}
+          <br><br>Anything that cannot be filled is left in the text so you notice it,
+          rather than being blanked out.</p>`,
+      actions: actionButtons('Add'),
+    });
+
+    modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
+
+    let editingId = null;
+    const rows = modal.querySelector('#tplRows');
+
+    rows.addEventListener('click', async (e) => {
+      const del = e.target.closest('[data-tpldel]');
+      if (del) {
+        if (!confirm('Delete this template?')) return;
+        const res = await fetch(`/api/templates/${del.dataset.tpldel}`, { method: 'DELETE' });
+        if (res.ok) del.closest('[data-tpl]').remove();
+        return;
+      }
+      const edit = e.target.closest('[data-tpledit]');
+      if (edit) {
+        const t = (templatesData.templates || []).find(x => x.id === Number(edit.dataset.tpledit));
+        if (!t) return;
+        editingId = t.id;
+        document.getElementById('tplName').value = t.name;
+        document.getElementById('tplBody').value = t.body;
+        modal.querySelector('[data-modal="save"]').textContent = 'Save changes';
+        modalStatus(`Editing "${t.name}".`);
+      }
+    });
+
+    modal.querySelector('[data-modal="save"]').onclick = async () => {
+      const body = {
+        name: document.getElementById('tplName').value,
+        body: document.getElementById('tplBody').value,
+      };
+      try {
+        const res = await fetch(editingId ? `/api/templates/${editingId}` : '/api/templates', {
+          method: editingId ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const saved = await res.json();
+        if (!res.ok) throw new Error(saved.error || 'Could not save that template.');
+        closeModal();
+        // The picker in an open composer is stale the moment this closes.
+        fillTemplatePicker(document.getElementById('replyTemplate'));
+      } catch (err) {
+        modalStatus(err.message);
+      }
+    };
+  }
+
   function openReply(msg){
     const wrap = document.getElementById('mailReply');
     if (wrap.querySelector('textarea')) { wrap.innerHTML = ''; return; }
@@ -2169,6 +2288,11 @@
           Reply to ${escapeHtml(msg.fromAddress)}
         </label>
         <textarea id="replyText" style="width:100%;min-height:150px;padding:10px;border:1px solid var(--line);border-radius:var(--radius-md);font-family:inherit;font-size:15px;background:var(--color-surface);color:var(--ink);resize:vertical;"></textarea>
+        <div class="tpl-bar">
+          <select id="replyTemplate"><option value="">Insert a template…</option></select>
+          <button type="button" class="int-btn" id="replyTemplateManage">Manage</button>
+          <span class="tpl-warn" id="replyTemplateWarn"></span>
+        </div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">
           <button type="button" class="btn" id="replySend">Send reply</button>
           <button type="button" class="btn ghost" id="replyCancel">Cancel</button>
@@ -2180,6 +2304,42 @@
     ta.value = quoted;
     ta.focus();
     ta.setSelectionRange(0, 0);
+
+    fillTemplatePicker(document.getElementById('replyTemplate'));
+    document.getElementById('replyTemplateManage').onclick = openTemplatesDialog;
+
+    // A template goes above the quoted original rather than replacing the
+    // box: losing what you had already typed to a mis-click on a dropdown
+    // would be its own small disaster.
+    document.getElementById('replyTemplate').onchange = async (e) => {
+      const id = e.target.value;
+      e.target.value = '';
+      if (!id) return;
+
+      const warn = document.getElementById('replyTemplateWarn');
+      warn.textContent = '';
+      try {
+        const res = await fetch(`/api/templates/${id}/render`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account: msg.account, uid: msg.id }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Could not load that template.');
+
+        ta.value = d.body + (ta.value.startsWith(quoted) ? quoted : '\n\n' + ta.value);
+        ta.focus();
+        ta.setSelectionRange(0, 0);
+
+        // Left standing in the text, and named here. Blanking them would
+        // send "Hi ," to a client; this way you see it before it goes.
+        if (d.unresolved.length) {
+          warn.textContent = `Still to fill in: ${d.unresolved.join(' ')}`;
+        }
+      } catch (err) {
+        warn.textContent = err.message;
+      }
+    };
 
     document.getElementById('replyCancel').onclick = () => { wrap.innerHTML = ''; };
     document.getElementById('replySend').onclick = async () => {

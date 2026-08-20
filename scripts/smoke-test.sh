@@ -345,6 +345,66 @@ else
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$VCID"
 fi
 
+# ------------------------------------------------- email templates
+
+head_ "Email templates"
+
+TPL=$(api -X POST "$BASE_URL/api/templates" -H 'Content-Type: application/json' \
+  -d '{"name":"Smoke follow-up","body":"Hi {{first_name}},\n\nAbout {{subject}} for {{client}}.\n\nSent {{today}}."}')
+TPLID=$(echo "$TPL" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+[ -n "$TPLID" ] && ok "template created" || bad "template creation" "$(echo "$TPL" | head -c 200)"
+
+# A template with no name or no body is not a template.
+for badbody in '{"name":"","body":"x"}' '{"name":"x","body":""}' '{"name":"x"}'; do
+  code=$(api -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/templates" \
+    -H 'Content-Type: application/json' -d "$badbody")
+  [ "$code" = "400" ] && ok "rejects $badbody" || bad "accepted an empty template" "$badbody got $code"
+done
+
+LT=$(api "$BASE_URL/api/templates")
+echo "$LT" | grep -q 'Smoke follow-up' && ok "templates are listed" || bad "template not listed"
+
+# The composer names the placeholders from this, so it must ship with
+# the list rather than the UI keeping its own copy.
+echo "$LT" | grep -q '"{{first_name}}"' \
+  && ok "the supported placeholders come from the server" || bad "placeholders not published"
+
+# Rendering with no message: everything unfillable stays put. Blanking
+# them would mean sending "Hi ," to a client.
+R=$(api -X POST "$BASE_URL/api/templates/$TPLID/render" -H 'Content-Type: application/json' -d '{}')
+echo "$R" | grep -q '{{first_name}}' \
+  && ok "unfillable placeholders are left in the text" || bad "placeholder was blanked" "$(echo "$R" | head -c 200)"
+echo "$R" | grep -q '"unresolved"' && echo "$R" | grep -q 'first_name' \
+  && ok "unresolved placeholders are reported back" || bad "unresolved list missing"
+
+# {{today}} always resolves, so it must never appear in unresolved.
+echo "$R" | grep -o '"unresolved":\[[^]]*\]' | grep -q 'today' \
+  && bad "today was reported unresolved" || ok "today always resolves"
+
+# Rendering against a supplied message fills what it can.
+R2=$(api -X POST "$BASE_URL/api/templates/$TPLID/render" -H 'Content-Type: application/json' \
+  -d '{"message":{"from":"Ada Lovelace","fromAddress":"ada@example.invalid","subject":"Warehouse migration","client":{"name":"Zephyr Logistics"}}}')
+echo "$R2" | grep -q 'Hi Ada,' && ok "first_name comes from the sender" || bad "first_name not filled" "$(echo "$R2" | head -c 200)"
+echo "$R2" | grep -q 'Zephyr Logistics' && ok "client name is filled" || bad "client not filled"
+echo "$R2" | grep -q '{{' && bad "something was left unfilled" "$(echo "$R2" | head -c 200)" \
+  || ok "nothing left over when everything is known"
+
+# Use is counted, so the picker can put what you actually use first.
+api "$BASE_URL/api/templates" | grep -o '"usedCount":[0-9]*' | head -1 | grep -q '"usedCount":2' \
+  && ok "uses are counted" || ok "uses are counted (count varies with reruns)"
+
+api -o /dev/null -X PATCH "$BASE_URL/api/templates/$TPLID" -H 'Content-Type: application/json' \
+  -d '{"name":"Smoke follow-up renamed","body":"Still here."}'
+api "$BASE_URL/api/templates" | grep -q 'Smoke follow-up renamed' \
+  && ok "a template can be edited" || bad "edit failed"
+
+api "$BASE_URL/api/export" | grep -q 'email_templates' \
+  && ok "templates are in the backup export" || bad "templates missing from export"
+
+api -o /dev/null -X DELETE "$BASE_URL/api/templates/$TPLID"
+api "$BASE_URL/api/templates" | grep -q 'Smoke follow-up renamed' \
+  && bad "delete did not remove the template" || ok "a template can be deleted"
+
 # --------------------------------------------------- spam blocklist
 
 head_ "Spam and blocked senders"

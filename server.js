@@ -24,6 +24,7 @@ const files = require('./lib/files');
 const folders = require('./lib/folders');
 const diagrams = require('./lib/diagrams');
 const blocklist = require('./lib/blocklist');
+const templates = require('./lib/templates');
 const packages = require('./lib/packages');
 const search = require('./lib/search');
 const exporter = require('./lib/export');
@@ -592,6 +593,83 @@ app.post('/api/inbox/not-spam', express.json(), async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('Could not restore from spam:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// --- Email templates ---
+
+app.get('/api/templates', async (req, res) => {
+  try {
+    res.json({
+      // Shipped with the list so the composer can name the placeholders
+      // it actually supports rather than a hard-coded copy that drifts.
+      placeholders: templates.PLACEHOLDERS,
+      templates: await templates.list(),
+    });
+  } catch (err) {
+    console.error('Failed to list templates:', err);
+    res.status(500).json({ error: 'Could not load templates.' });
+  }
+});
+
+app.post('/api/templates', express.json({ limit: '256kb' }), async (req, res) => {
+  try {
+    res.status(201).json(await templates.create(req.body || {}));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.patch('/api/templates/:id', express.json({ limit: '256kb' }), async (req, res) => {
+  try {
+    const updated = await templates.update(Number(req.params.id), req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Not found.' });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/templates/:id', async (req, res) => {
+  try {
+    const removed = await templates.remove(Number(req.params.id));
+    if (!removed) return res.status(404).json({ error: 'Not found.' });
+    res.status(204).end();
+  } catch (err) {
+    res.status(400).json({ error: 'Could not delete that template.' });
+  }
+});
+
+// Fills a template against the message being answered. Done here rather
+// than in the browser so there is one implementation of the
+// substitution, and so it can be tested.
+app.post('/api/templates/:id/render', express.json(), async (req, res) => {
+  try {
+    const tpl = await templates.get(Number(req.params.id));
+    if (!tpl) return res.status(404).json({ error: 'Not found.' });
+
+    const { account, uid } = req.body || {};
+    let message = req.body && req.body.message ? req.body.message : null;
+
+    // Prefer fetching the message over trusting what the page sent: the
+    // client match in particular comes from the CRM, not the browser.
+    if (!message && configuredMailboxes().includes(account) && uid) {
+      message = await mail.getMessage(account, uid);
+      if (message) {
+        try {
+          const matches = await crm.matchEmails([message.fromAddress]);
+          const hit = matches[(message.fromAddress || '').toLowerCase()];
+          if (hit) message.client = { id: hit.clientId, name: hit.clientName, stage: hit.stage };
+        } catch (err) { /* an unmatched sender is a normal outcome */ }
+      }
+    }
+
+    const rendered = templates.render(tpl.body, templates.contextFrom(message || {}));
+    await templates.recordUse(tpl.id);
+    res.json({ id: tpl.id, name: tpl.name, ...rendered });
+  } catch (err) {
+    console.error('Failed to render template:', err);
     res.status(400).json({ error: err.message });
   }
 });

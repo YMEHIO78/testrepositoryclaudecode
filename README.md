@@ -979,3 +979,44 @@ Decisions worth keeping:
   folder ids are unrelated.
 - Failed uploads are named individually. "3 of 4 uploaded" leaves you to
   work out which one is missing.
+
+### Email templates
+
+Reusable reply bodies, picked from a dropdown under the reply box.
+**Manage** opens the editor: add, edit, delete.
+
+**There is no subject field.** The Inbox only replies and forwards, and
+both keep the subject of the thread they belong to, so a subject would
+be stored, shown and never used — the same reasoning that keeps a
+permission column off the People module. If a "new email" composer is
+ever added, that is when a subject earns its place.
+
+**Placeholders** are filled from the message you are answering:
+
+| Token | Filled from |
+| --- | --- |
+| `{{name}}` | the sender's name, as their mail client sends it |
+| `{{first_name}}` | the first word of that name |
+| `{{email}}` | the sender's address |
+| `{{client}}` | the client this sender is matched to, if any |
+| `{{subject}}` | the subject of the message you are answering |
+| `{{account}}` | the mailbox of yours it arrived at |
+| `{{today}}` | today's date |
+
+The list is served by `GET /api/templates` and rendered into the editor
+from there, so the UI cannot drift from what the server supports.
+
+Two decisions that matter more than they look:
+
+- **Anything that cannot be filled is left standing in the text**, and
+  named under the composer ("Still to fill in: `{{client}}`"). Blanking
+  it would send *"Hi ,"* to a client — and only one of those two failures
+  is still fixable when you spot it.
+- **A template is inserted above the quoted original, never over your
+  draft.** Losing what you had already typed to a mis-click on a dropdown
+  would be its own small disaster.
+
+Rendering happens server-side (`POST /api/templates/:id/render`) so there
+is one implementation of the substitution and it can be tested. It
+re-fetches the message rather than trusting what the page sent, because
+the client match comes from the CRM rather than the browser.
