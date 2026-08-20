@@ -911,9 +911,9 @@ inspection, not attention.
 
 ### The architecture diagram on a client's page
 
-Each client page opens with a **Data architecture** section showing one
-diagram of your choosing. Pick it with **Show above** in the Diagrams
-section below it; **Remove** takes it down.
+Each client page carries a **Data architecture** section, directly above
+Meetings, showing one diagram of your choosing. Pick it with **Show at
+top** in the Diagrams section further down; **Remove** takes it down.
 
 It is a rendered image, not an embedded editor. Loading draw.io into
 every client page you open would be slow and would put third-party

@@ -2622,6 +2622,30 @@
           </div>
 
           <div class="detail-section">
+            <h2>Data architecture</h2>
+            ${d.pinnedDiagram ? `
+              <figure class="arch">
+                ${d.pinnedDiagram.preview
+                  // An <img>, never innerHTML: an SVG injected into the
+                  // page could carry script and would run in this origin.
+                  // As an image source it cannot.
+                  ? `<a href="/diagram/${d.pinnedDiagram.id}" title="Open in the editor">
+                       <img src="${escapeHtml(d.pinnedDiagram.preview)}" alt="Data architecture for ${escapeHtml(c.name)}">
+                     </a>`
+                  : `<p class="detail-empty">No rendered copy yet —
+                       <a href="/diagram/${d.pinnedDiagram.id}">open it once</a>
+                       and it will appear here. draw.io renders in the browser, so
+                       nothing else can produce the picture.</p>`}
+                <figcaption>
+                  ${escapeHtml(d.pinnedDiagram.name)}
+                  <button type="button" class="int-btn" data-unpin="${c.id}">Remove</button>
+                </figcaption>
+              </figure>`
+              : `<p class="detail-empty">No diagram shown here yet. Pick one in the
+                   Diagrams section further down to put it here.</p>`}
+          </div>
+
+          <div class="detail-section">
             <h2>Meetings</h2>
             ${meetingsMarkup(d.meetings || [])}
           </div>
@@ -2654,30 +2678,6 @@
                 is not lost, and stops showing once a quantity is set.</p>` : ''}
           </div>
           <div class="detail-section">
-            <h2>Data architecture</h2>
-            ${d.pinnedDiagram ? `
-              <figure class="arch">
-                ${d.pinnedDiagram.preview
-                  // An <img>, never innerHTML: an SVG injected into the
-                  // page could carry script and would run in this origin.
-                  // As an image source it cannot.
-                  ? `<a href="/diagram/${d.pinnedDiagram.id}" title="Open in the editor">
-                       <img src="${escapeHtml(d.pinnedDiagram.preview)}" alt="Data architecture for ${escapeHtml(c.name)}">
-                     </a>`
-                  : `<p class="detail-empty">No rendered copy yet —
-                       <a href="/diagram/${d.pinnedDiagram.id}">open it once</a>
-                       and it will appear here. draw.io renders in the browser, so
-                       nothing else can produce the picture.</p>`}
-                <figcaption>
-                  ${escapeHtml(d.pinnedDiagram.name)}
-                  <button type="button" class="int-btn" data-unpin="${c.id}">Remove</button>
-                </figcaption>
-              </figure>`
-              : `<p class="detail-empty">No diagram shown here yet. Pick one below to
-                   put it on this page.</p>`}
-          </div>
-
-          <div class="detail-section">
             <h2>Diagrams</h2>
             ${(d.diagrams || []).length ? (d.diagrams || []).map(g => `
               <div class="detail-row">
@@ -2687,8 +2687,8 @@
                 </span>
                 <span class="sub">
                   ${d.pinnedDiagram && d.pinnedDiagram.id === g.id
-                    ? '<span class="pill grey">shown above</span>'
-                    : `<button type="button" class="int-btn" data-pin="${g.id}" data-client="${c.id}">Show above</button>`}
+                    ? '<span class="pill grey">shown at top</span>'
+                    : `<button type="button" class="int-btn" data-pin="${g.id}" data-client="${c.id}">Show at top</button>`}
                 </span>
               </div>`).join('')
               : '<p class="detail-empty">No diagrams for this client yet.</p>'}
