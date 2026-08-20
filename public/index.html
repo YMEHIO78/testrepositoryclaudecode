@@ -304,8 +304,12 @@
   .msg-row{padding:10px;border-bottom:1px solid var(--line);}
   .msg-row:last-child{border-bottom:none;}
   .msg-row-top{display:flex;gap:10px;align-items:flex-start;}
-  .inbox-tab.spam-tab{margin-left:auto;color:var(--muted);}
-  .inbox-tab.spam-tab.active{color:var(--ink);}
+  /* The tab list is a column, so Spam is set apart with a rule above it
+     rather than pushed to one end. It is a different folder, not another
+     account, and should not read as one more mailbox in the list. */
+  .inbox-tab.spam-tab{margin-top:8px;padding-top:11px;border-top:1px solid var(--color-divider);
+    border-radius:0 0 var(--radius-md) var(--radius-md);color:var(--color-neutral-500);}
+  .inbox-tab.spam-tab.active{color:var(--color-accent);}
   .spam-note{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);
     font-size:12px;color:var(--muted);line-height:1.45;}
   .spam-note button{flex:none;background:none;border:1px solid var(--line);border-radius:var(--radius-md);
