@@ -491,6 +491,10 @@
   .btn{display:inline-flex;align-items:center;gap:6px;background:var(--color-accent);color:var(--color-bg);border:1px solid transparent;border-radius:var(--radius-md);padding:7px 14px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;min-height:36px;}
   .btn.ghost{background:none;border-color:var(--color-divider);color:var(--ink);}
   .btn.small{padding:5px 10px;font-size:11.5px;}
+  /* An anchor styled as a button still picks up the global a:hover
+     underline, which looks like a mistake on something shaped like a
+     button. */
+  a.btn:hover{text-decoration:none;border-color:var(--color-accent);color:var(--color-accent);}
 
   .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;}
   .cal-day{background:var(--panel);min-height:88px;padding:6px;font-size:11px;}
@@ -963,6 +967,12 @@
 
       <div style="display:flex;gap:8px;align-items:center;margin:18px 0 12px;flex-wrap:wrap;">
         <button type="button" class="btn ghost" id="finRefresh">Refresh</button>
+        <!-- Straight to Wave itself. This page is read-only by design, so
+             anything that changes the books happens over there. No deep
+             link to the business: the id the API uses is not the one the
+             URLs use, and a link that lands on the wrong business would
+             be worse than one that lands on the dashboard. -->
+        <a class="btn ghost" href="https://my.waveapps.com/" target="_blank" rel="noopener noreferrer">Open Wave ↗</a>
         <span class="msg-snippet" id="finMeta"></span>
       </div>
 
