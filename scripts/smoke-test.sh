@@ -379,9 +379,19 @@ else
   done
 
   # Oversized images are refused rather than silently truncated.
-  BIG=$(printf 'data:image/png;base64,%s' "$(head -c 200000 /dev/zero | tr '\0' 'A')")
+  #
+  # Written to a file and posted with --data-binary: passing 200KB as a
+  # -d argument exceeds the OS argument limit and curl never runs, which
+  # looks exactly like the server accepting it.
+  BIGFILE=$(mktemp)
+  {
+    printf '{"logo":"data:image/png;base64,'
+    head -c 200000 /dev/zero | tr '\0' 'A'
+    printf '"}'
+  } > "$BIGFILE"
   code=$(api -o /dev/null -w '%{http_code}' -X PUT "$BASE_URL/api/crm/clients/$LCID/logo" \
-    -H 'Content-Type: application/json' -d "{\"logo\":\"$BIG\"}")
+    -H 'Content-Type: application/json' --data-binary "@$BIGFILE")
+  rm -f "$BIGFILE"
   [ "$code" = "400" ] && ok "an oversized logo is refused" || bad "oversized logo accepted" "got $code"
 
   # And the refusals must not have clobbered the good one.
