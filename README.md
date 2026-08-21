@@ -1066,3 +1066,33 @@ appended to the mailbox's Sent folder over IMAP, marked `\Seen`:
 - `MailComposer` is loaded defensively. It is an internal path in
   nodemailer, and losing the ability to send mail because a copy could
   not be filed would be a poor trade.
+
+### Recipient suggestions
+
+Typing two or more characters in **To** searches your contacts by name,
+address, or company, and offers them below the field. Arrow keys move,
+Enter or Tab picks, Escape dismisses, clicking works too.
+
+The details that make it usable rather than annoying:
+
+- **It works on the fragment after the last comma**, not the whole box.
+  Typing a second recipient must not search for the first one as well.
+- **Contacts with no email address are never offered.** Picking one would
+  put nothing in the box — a suggestion that does not work when taken is
+  worse than no suggestion.
+- **Anyone already in the box is filtered out**, so the list stops
+  offering someone you have just added.
+- **Enter is only intercepted when a row is actually highlighted**, so an
+  address you typed out in full is never hijacked by a stale list.
+- **Under two characters returns nothing**, on the server as well as in
+  the browser. A list that ignores what you typed is not a suggestion.
+- **The list overlays the form** rather than pushing it down. Fields that
+  jump while you are typing into them are horrible.
+- Selection uses `mousedown`, not `click`: blur would close the list
+  before a click ever landed.
+- The company name is searched too, so "Zephyr" finds everyone there, and
+  each row shows which client the contact belongs to — two people called
+  John are otherwise indistinguishable.
+
+Wildcards are escaped the same way as global search, so a literal `%`
+searches for that character instead of matching the whole address book.

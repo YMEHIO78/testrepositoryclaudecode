@@ -214,6 +214,16 @@
     color:var(--ink);}
   .compose textarea{min-height:220px;resize:vertical;margin-top:8px;}
   .compose-actions{display:flex;gap:10px;align-items:center;margin-top:12px;}
+  /* The list overlays what follows rather than pushing the form down —
+     fields that jump while you are typing into them are horrible. */
+  .suggest-wrap{position:relative;}
+  .suggest{position:absolute;left:0;right:0;top:100%;z-index:40;max-height:260px;overflow:auto;
+    background:var(--color-surface);border:1px solid var(--color-divider);
+    border-radius:var(--radius-md);box-shadow:0 6px 20px rgba(0,0,0,.12);}
+  .suggest-row{padding:7px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--color-neutral-200);}
+  .suggest-row:last-child{border-bottom:0;}
+  .suggest-row:hover,.suggest-row.active{background:var(--color-accent-100);}
+  .suggest-row .sub{font-size:12px;color:var(--color-neutral-600);}
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
@@ -2293,6 +2303,105 @@
     };
   }
 
+  // --- Recipient suggestions ---
+  //
+  // The box holds several addresses separated by commas, so everything
+  // here works on the fragment after the last comma rather than the
+  // whole value. Typing a second recipient must not search for the first
+  // one as well.
+  function currentFragment(input){
+    const upto = input.value.slice(0, input.selectionStart ?? input.value.length);
+    const start = upto.lastIndexOf(',') + 1;
+    return { start, text: upto.slice(start).trim() };
+  }
+
+  function attachContactSuggest(input, list){
+    let results = [];
+    let active = -1;
+    let timer = null;
+
+    const close = () => {
+      list.classList.add('hidden');
+      list.innerHTML = '';
+      input.setAttribute('aria-expanded', 'false');
+      results = [];
+      active = -1;
+    };
+
+    const paint = () => {
+      if (!results.length) { close(); return; }
+      list.innerHTML = results.map((c, i) => `
+        <div class="suggest-row ${i === active ? 'active' : ''}" role="option"
+             aria-selected="${i === active}" data-pick="${i}">
+          <span>
+            <b>${escapeHtml(c.name)}</b>
+            ${c.clientName ? `<span class="pill grey">${escapeHtml(c.clientName)}</span>` : ''}
+            <div class="sub">${escapeHtml(c.email)}${c.role ? ' · ' + escapeHtml(c.role) : ''}</div>
+          </span>
+        </div>`).join('');
+      list.classList.remove('hidden');
+      input.setAttribute('aria-expanded', 'true');
+    };
+
+    const choose = (i) => {
+      const picked = results[i];
+      if (!picked) return;
+      const { start } = currentFragment(input);
+      const before = input.value.slice(0, start);
+      const after = input.value.slice(input.selectionStart ?? input.value.length);
+      // Trailing ", " so the next name can be typed straight away.
+      const inserted = `${picked.email}, `;
+      input.value = before + inserted + after;
+      const caret = (before + inserted).length;
+      input.setSelectionRange(caret, caret);
+      close();
+      input.focus();
+    };
+
+    input.addEventListener('input', () => {
+      const { text } = currentFragment(input);
+      clearTimeout(timer);
+      // Two characters, matching the server. Anything shorter matches
+      // most of the address book, which is not a suggestion.
+      if (text.length < 2) { close(); return; }
+
+      timer = setTimeout(async () => {
+        try {
+          const d = await (await fetch(`/api/contacts/search?q=${encodeURIComponent(text)}`)).json();
+          const already = input.value.toLowerCase();
+          // Someone already in the box is not a useful suggestion.
+          results = (d.contacts || []).filter(c =>
+            !already.includes(c.email.toLowerCase()) || c.email.toLowerCase() === text.toLowerCase());
+          active = results.length ? 0 : -1;
+          paint();
+        } catch (err) {
+          close();
+        }
+      }, 180);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (list.classList.contains('hidden')) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); active = (active + 1) % results.length; paint(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = (active - 1 + results.length) % results.length; paint(); }
+      else if (e.key === 'Enter' || e.key === 'Tab') {
+        // Only swallow Enter when something is actually highlighted, so
+        // a typed-out address is never hijacked by a stale list.
+        if (active >= 0) { e.preventDefault(); choose(active); }
+      } else if (e.key === 'Escape') { e.preventDefault(); close(); }
+    });
+
+    list.addEventListener('mousedown', (e) => {
+      // mousedown, not click: blur would close the list first.
+      const row = e.target.closest('[data-pick]');
+      if (!row) return;
+      e.preventDefault();
+      choose(Number(row.dataset.pick));
+    });
+
+    input.addEventListener('blur', () => setTimeout(close, 120));
+  }
+
   // A new email, written in the reading pane so it has room. Deliberately
   // not a modal: a modal you can dismiss with Escape is the wrong shape
   // for something you have spent five minutes typing into.
@@ -2315,7 +2424,12 @@
           ${accounts.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('')}
         </select>
         <label>To</label>
-        <input type="text" id="cmpTo" placeholder="someone@example.com, another@example.com" autocomplete="off">
+        <div class="suggest-wrap">
+          <input type="text" id="cmpTo" placeholder="Start typing a name, or paste an address"
+                 autocomplete="off" role="combobox" aria-expanded="false"
+                 aria-controls="cmpToSuggest" aria-autocomplete="list">
+          <div class="suggest hidden" id="cmpToSuggest" role="listbox"></div>
+        </div>
         <label>Subject</label>
         <input type="text" id="cmpSubject" autocomplete="off">
         <div class="tpl-bar">
@@ -2332,6 +2446,7 @@
       </div>`;
 
     document.getElementById('cmpTo').focus();
+    attachContactSuggest(document.getElementById('cmpTo'), document.getElementById('cmpToSuggest'));
     fillTemplatePicker(document.getElementById('cmpTemplate'));
     document.getElementById('cmpTemplateManage').onclick = openTemplatesDialog;
 

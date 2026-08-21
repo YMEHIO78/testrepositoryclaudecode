@@ -636,6 +636,18 @@ app.post('/api/inbox/send', express.json({ limit: '1mb' }), async (req, res) => 
   }
 });
 
+// Recipient suggestions for the To box. Short queries return nothing
+// rather than the first eight contacts alphabetically — a suggestion
+// list that ignores what you typed is worse than no list.
+app.get('/api/contacts/search', async (req, res) => {
+  try {
+    res.json({ contacts: await crm.searchContacts(req.query.q || '') });
+  } catch (err) {
+    console.error('Contact search failed:', err);
+    res.status(500).json({ error: 'Could not search contacts.' });
+  }
+});
+
 // --- Email templates ---
 
 app.get('/api/templates', async (req, res) => {

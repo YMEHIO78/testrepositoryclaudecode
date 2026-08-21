@@ -345,6 +345,51 @@ else
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$VCID"
 fi
 
+# --------------------------------------------- recipient suggestions
+
+head_ "Contact suggestions"
+
+SC=$(api -X POST "$BASE_URL/api/crm/clients" -H 'Content-Type: application/json' \
+  -d '{"name":"Suggest Test Co","stage":"client"}')
+SCID=$(echo "$SC" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+if [ -z "$SCID" ]; then
+  bad "could not create client for suggestion tests" "$SC"
+else
+  api -o /dev/null -X POST "$BASE_URL/api/crm/clients/$SCID/contacts" \
+    -H 'Content-Type: application/json' \
+    -d '{"name":"Wilhelmina Testerson","email":"wilhelmina@suggest.invalid","role":"Ops"}'
+  # A contact with no address must never be suggested — picking it would
+  # put nothing in the box.
+  api -o /dev/null -X POST "$BASE_URL/api/crm/clients/$SCID/contacts" \
+    -H 'Content-Type: application/json' -d '{"name":"Wilhelmina Noemail"}'
+
+  S1=$(api "$BASE_URL/api/contacts/search?q=wilhel")
+  echo "$S1" | grep -q 'wilhelmina@suggest.invalid' \
+    && ok "a contact is suggested by name" || bad "name search found nothing" "$(echo "$S1" | head -c 200)"
+  echo "$S1" | grep -q 'Noemail' \
+    && bad "a contact with no address was suggested" || ok "contacts without an address are skipped"
+  echo "$S1" | grep -q 'Suggest Test Co' \
+    && ok "the suggestion carries the client name" || bad "client name missing from suggestion"
+
+  api "$BASE_URL/api/contacts/search?q=suggest.inv" | grep -q 'Wilhelmina' \
+    && ok "a contact is suggested by address" || bad "address search found nothing"
+
+  api "$BASE_URL/api/contacts/search?q=Suggest%20Test%20Co" | grep -q 'Wilhelmina' \
+    && ok "a contact is found by their company" || bad "company search found nothing"
+
+  # One character would match most of the address book; that is not a
+  # suggestion, so it returns nothing rather than everything.
+  api "$BASE_URL/api/contacts/search?q=w" | grep -q 'wilhelmina@suggest.invalid' \
+    && bad "a one-character query returned matches" || ok "very short queries return nothing"
+
+  # A literal % must search for that character, not match everything.
+  api "$BASE_URL/api/contacts/search?q=%25%25" | grep -q 'wilhelmina@suggest.invalid' \
+    && bad "wildcards were not escaped" || ok "wildcards in a query are escaped"
+
+  api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$SCID"
+fi
+
 # ------------------------------------------------- email templates
 
 head_ "Email templates"
