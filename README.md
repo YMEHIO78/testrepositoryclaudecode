@@ -1166,3 +1166,27 @@ the value of the page. Two consequences worth knowing:
 - **The fullest name wins.** Bookings often carry "Ada" where a contact
   record has the surname, so the longer of the two is kept. A phone
   number from any source survives the fold.
+
+### Assigning a task
+
+The **Assignee** field on a task suggests from the address book as you
+type — team, client contacts, and anyone who has booked a meeting. Each
+row says where that person is known from, so two people with the same
+first name are still tellable apart.
+
+It searches the **whole** address book rather than only the project's
+team. Work gets handed to people who were never formally added to a
+project, and refusing to name them would just push the field back to
+being typed by hand — which is what it was before.
+
+`project_tasks.assignee` is unchanged: still a plain text column holding
+a name. Nothing was migrated, because the address book spans three
+tables with no single id to point at, and a task's assignee is a label
+rather than a live link to a record.
+
+The suggestion list itself is one shared widget (`attachSuggest`), used
+by both this and the recipient box. It is positioned `fixed` against the
+input's own rectangle rather than absolutely inside its wrapper: the task
+dialog scrolls, and an absolutely-positioned list is clipped the moment
+it reaches the bottom edge — which is exactly where a dropdown appears.
+It flips above the field when there is more room there.

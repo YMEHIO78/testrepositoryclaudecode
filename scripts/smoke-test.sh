@@ -970,7 +970,8 @@ else
   ok "project created"
 
   api -o /dev/null -X POST "$BASE_URL/api/projects/$PJID/tasks" \
-    -H 'Content-Type: application/json' -d '{"title":"smoke task","status":"todo"}'
+    -H 'Content-Type: application/json' \
+    -d '{"title":"smoke task","status":"todo","assignee":"Grace Bookhopper"}'
 
   # A dated pending milestone must appear on the calendar.
   api -o /dev/null -X POST "$BASE_URL/api/projects/$PJID/milestones" \
@@ -979,6 +980,10 @@ else
   DET=$(api "$BASE_URL/api/projects/$PJID/detail")
   echo "$DET" | grep -q '"tasks"'      && ok "project detail includes the board" || bad "project detail tasks"
   echo "$DET" | grep -q 'smoke task'   && ok "task saved to the board"           || bad "task not saved"
+  # The assignee comes from the address book type-ahead, which puts the
+  # person's name in a plain text column.
+  echo "$DET" | grep -q '"assignee":"Grace Bookhopper"' \
+    && ok "a task keeps its assignee" || bad "assignee not stored"
   echo "$DET" | grep -q '"milestones"' && ok "project detail includes milestones"|| bad "project detail milestones"
 
   api "$BASE_URL/api/calendar/events?from=2030-02-01T00:00:00Z&to=2030-04-01T00:00:00Z" \

@@ -217,7 +217,10 @@
   /* The list overlays what follows rather than pushing the form down —
      fields that jump while you are typing into them are horrible. */
   .suggest-wrap{position:relative;}
-  .suggest{position:absolute;left:0;right:0;top:100%;z-index:40;max-height:260px;overflow:auto;
+  /* Fixed, and placed by script against the input's rectangle: an
+     absolutely-positioned list is clipped by the task dialog, which
+     scrolls. z-index sits above the dialog rather than beside it. */
+  .suggest{position:fixed;z-index:200;max-height:260px;overflow:auto;
     background:var(--color-surface);border:1px solid var(--color-divider);
     border-radius:var(--radius-md);box-shadow:0 6px 20px rgba(0,0,0,.12);}
   .suggest-row{padding:7px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--color-neutral-200);}
@@ -2438,10 +2441,19 @@
     return { start, text: upto.slice(start).trim() };
   }
 
-  function attachContactSuggest(input, list){
+  // Generic type-ahead. The keyboard handling is the same wherever this
+  // appears, so it lives once; callers supply where to search, how to
+  // draw a row, what to put in the box, and whether the field holds one
+  // value or a comma-separated list.
+  function attachSuggest(input, list, opts){
+    const { search, row, valueOf, multi = false } = opts;
     let results = [];
     let active = -1;
     let timer = null;
+
+    // A single-value field has no commas to split on, so the whole box
+    // is the fragment.
+    const fragment = () => multi ? currentFragment(input) : { start: 0, text: input.value.trim() };
 
     const close = () => {
       list.classList.add('hidden');
@@ -2451,38 +2463,70 @@
       active = -1;
     };
 
+    // Positioned fixed against the input's own rectangle rather than
+    // absolutely inside its wrapper. The task dialog scrolls
+    // (overflow-y:auto), and an absolutely-positioned list inside it is
+    // clipped the moment it reaches the bottom edge — which is exactly
+    // where a dropdown appears.
+    const place = () => {
+      const r = input.getBoundingClientRect();
+      const below = window.innerHeight - r.bottom;
+      list.style.left = `${r.left}px`;
+      list.style.width = `${r.width}px`;
+      // Flip above when there is more room there, so the list is not
+      // squeezed into 40px against the bottom of the window.
+      if (below < 180 && r.top > below) {
+        list.style.top = 'auto';
+        list.style.bottom = `${window.innerHeight - r.top + 2}px`;
+        list.style.maxHeight = `${Math.min(260, r.top - 8)}px`;
+      } else {
+        list.style.bottom = 'auto';
+        list.style.top = `${r.bottom + 2}px`;
+        list.style.maxHeight = `${Math.min(260, below - 8)}px`;
+      }
+    };
+
     const paint = () => {
       if (!results.length) { close(); return; }
       list.innerHTML = results.map((c, i) => `
         <div class="suggest-row ${i === active ? 'active' : ''}" role="option"
-             aria-selected="${i === active}" data-pick="${i}">
-          <span>
-            <b>${escapeHtml(c.name)}</b>
-            ${c.clientName ? `<span class="pill grey">${escapeHtml(c.clientName)}</span>` : ''}
-            <div class="sub">${escapeHtml(c.email)}${c.role ? ' · ' + escapeHtml(c.role) : ''}</div>
-          </span>
-        </div>`).join('');
+             aria-selected="${i === active}" data-pick="${i}">${row(c)}</div>`).join('');
       list.classList.remove('hidden');
+      place();
       input.setAttribute('aria-expanded', 'true');
     };
+
+    // Anything that moves the input invalidates the position. Closing is
+    // simpler than tracking it, and nobody scrolls mid-selection.
+    window.addEventListener('scroll', () => {
+      if (!list.classList.contains('hidden')) close();
+    }, true);
+    window.addEventListener('resize', () => {
+      if (!list.classList.contains('hidden')) close();
+    });
 
     const choose = (i) => {
       const picked = results[i];
       if (!picked) return;
-      const { start } = currentFragment(input);
-      const before = input.value.slice(0, start);
-      const after = input.value.slice(input.selectionStart ?? input.value.length);
-      // Trailing ", " so the next name can be typed straight away.
-      const inserted = `${picked.email}, `;
-      input.value = before + inserted + after;
-      const caret = (before + inserted).length;
-      input.setSelectionRange(caret, caret);
+
+      if (!multi) {
+        input.value = valueOf(picked);
+      } else {
+        const { start } = fragment();
+        const before = input.value.slice(0, start);
+        const after = input.value.slice(input.selectionStart ?? input.value.length);
+        // Trailing ", " so the next name can be typed straight away.
+        const inserted = `${valueOf(picked)}, `;
+        input.value = before + inserted + after;
+        const caret = (before + inserted).length;
+        input.setSelectionRange(caret, caret);
+      }
       close();
       input.focus();
     };
 
     input.addEventListener('input', () => {
-      const { text } = currentFragment(input);
+      const { text } = fragment();
       clearTimeout(timer);
       // Two characters, matching the server. Anything shorter matches
       // most of the address book, which is not a suggestion.
@@ -2490,11 +2534,7 @@
 
       timer = setTimeout(async () => {
         try {
-          const d = await (await fetch(`/api/contacts/search?q=${encodeURIComponent(text)}`)).json();
-          const already = input.value.toLowerCase();
-          // Someone already in the box is not a useful suggestion.
-          results = (d.contacts || []).filter(c =>
-            !already.includes(c.email.toLowerCase()) || c.email.toLowerCase() === text.toLowerCase());
+          results = await search(text, input.value);
           active = results.length ? 0 : -1;
           paint();
         } catch (err) {
@@ -2523,6 +2563,61 @@
     });
 
     input.addEventListener('blur', () => setTimeout(close, 120));
+  }
+
+  // Recipients: several per field, and what goes in the box is the
+  // address rather than the name.
+  function attachContactSuggest(input, list){
+    attachSuggest(input, list, {
+      multi: true,
+      valueOf: (c) => c.email,
+      search: async (text, whole) => {
+        const d = await (await fetch(`/api/contacts/search?q=${encodeURIComponent(text)}`)).json();
+        const already = whole.toLowerCase();
+        // Someone already in the box is not a useful suggestion.
+        return (d.contacts || []).filter(c =>
+          !already.includes(c.email.toLowerCase()) || c.email.toLowerCase() === text.toLowerCase());
+      },
+      row: (c) => `
+        <span>
+          <b>${escapeHtml(c.name)}</b>
+          ${c.clientName ? `<span class="pill grey">${escapeHtml(c.clientName)}</span>` : ''}
+          <div class="sub">${escapeHtml(c.email)}${c.role ? ' · ' + escapeHtml(c.role) : ''}</div>
+        </span>`,
+    });
+  }
+
+  // A task assignee: one person, and what goes in the box is the name,
+  // because that is what the column has always held and what gets shown
+  // on the card.
+  //
+  // Searches the whole address book rather than only the project's team.
+  // Work gets handed to people who were never formally added to a
+  // project, and refusing to name them would just mean the field goes
+  // back to being typed by hand.
+  function attachAssigneeSuggest(input, list){
+    attachSuggest(input, list, {
+      multi: false,
+      valueOf: (e) => e.name,
+      search: async (text) => {
+        const d = await (await fetch(`/api/addressbook?q=${encodeURIComponent(text)}`)).json();
+        return (d.entries || []).slice(0, 8);
+      },
+      row: (e) => {
+        // Says where this person is known from, so two people with the
+        // same first name are still tellable apart.
+        const where = (e.known || []).map(k =>
+          k.source === 'person' ? (k.detail || 'team')
+            : k.source === 'contact' ? (k.org || 'client contact')
+              : 'booked a meeting');
+        return `
+          <span>
+            <b>${escapeHtml(e.name || '—')}</b>
+            <div class="sub">${escapeHtml(e.email || 'no email')}${
+              where.length ? ' · ' + escapeHtml([...new Set(where)].join(', ')) : ''}</div>
+          </span>`;
+      },
+    });
   }
 
   // A new email, written in the reading pane so it has room. Deliberately
@@ -5541,12 +5636,24 @@
                 `<option value="${s.key}" ${(task?.status || defaultStatus || 'todo') === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
             </select>
           </div>
-          <div><label>Assignee</label><input type="text" id="tkWho" value="${escapeHtml(task?.assignee || '')}"></div>
+          <div>
+            <label>Assignee</label>
+            <div class="suggest-wrap">
+              <input type="text" id="tkWho" value="${escapeHtml(task?.assignee || '')}"
+                     autocomplete="off" placeholder="Start typing a name"
+                     role="combobox" aria-expanded="false" aria-controls="tkWhoSuggest"
+                     aria-autocomplete="list">
+              <div class="suggest hidden" id="tkWhoSuggest" role="listbox"></div>
+            </div>
+          </div>
         </div>
         <label>Notes</label>
         <textarea id="tkNotes">${escapeHtml(task?.notes || '')}</textarea>`,
       actions: actionButtons(isEdit ? 'Save' : 'Add task', { destructive: isEdit ? 'Delete' : null }),
     });
+
+    attachAssigneeSuggest(document.getElementById('tkWho'),
+      document.getElementById('tkWhoSuggest'));
 
     modal.querySelector('[data-modal="cancel"]').onclick = closeModal;
     modal.querySelector('[data-modal="save"]').onclick = async () => {
