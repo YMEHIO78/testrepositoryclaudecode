@@ -345,6 +345,66 @@ else
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$VCID"
 fi
 
+# ---------------------------------------------------------- address book
+
+head_ "Address book"
+
+AB_C=$(api -X POST "$BASE_URL/api/crm/clients" -H 'Content-Type: application/json' \
+  -d '{"name":"Address Book Co","stage":"client"}')
+AB_CID=$(echo "$AB_C" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+AB_P=$(api -X POST "$BASE_URL/api/people" -H 'Content-Type: application/json' \
+  -d '{"name":"Grace Bookhopper","email":"grace@addressbook.invalid","engagement":"contractor","role":"Engineer"}')
+AB_PID=$(echo "$AB_P" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+if [ -z "$AB_CID" ] || [ -z "$AB_PID" ]; then
+  bad "could not set up address book fixtures" "client=$AB_CID person=$AB_PID"
+else
+  # The same address in two places is the case the whole page exists for.
+  api -o /dev/null -X POST "$BASE_URL/api/crm/clients/$AB_CID/contacts" \
+    -H 'Content-Type: application/json' \
+    -d '{"name":"Grace Bookhopper","email":"GRACE@addressbook.invalid","phone":"+1 555 0100","isPrimary":true}'
+  # And somebody who exists only as a client contact.
+  api -o /dev/null -X POST "$BASE_URL/api/crm/clients/$AB_CID/contacts" \
+    -H 'Content-Type: application/json' -d '{"name":"Solo Contactperson","email":"solo@addressbook.invalid"}'
+
+  AB=$(api "$BASE_URL/api/addressbook?q=addressbook.invalid")
+  echo "$AB" | grep -q 'Grace Bookhopper' && ok "the address book lists people" || bad "address book empty" "$(echo "$AB" | head -c 250)"
+  echo "$AB" | grep -q 'Solo Contactperson' && ok "client contacts appear" || bad "contacts missing"
+
+  # Folded to one entry, matched case-insensitively on the address.
+  GRACE_ROWS=$(echo "$AB" | grep -o '"name":"Grace Bookhopper"' | wc -l)
+  [ "$GRACE_ROWS" -eq 1 ] \
+    && ok "one entry for someone in two sources" \
+    || bad "the same person appeared $GRACE_ROWS times" "matching on email is case-insensitive"
+
+  # ...carrying both roles, and the phone from whichever record had one.
+  echo "$AB" | grep -q '"source":"person"' && echo "$AB" | grep -q '"source":"contact"' \
+    && ok "the folded entry keeps both sources" || bad "sources lost in the fold"
+  echo "$AB" | grep -q '555 0100' \
+    && ok "a phone number from one source survives the fold" || bad "phone lost in the fold"
+
+  # Search must narrow, not error.
+  api "$BASE_URL/api/addressbook?q=Solo" | grep -q 'Grace Bookhopper' \
+    && bad "search did not narrow" || ok "search narrows the address book"
+  api "$BASE_URL/api/addressbook?q=zzzznobodyzzz" | grep -q '"count":0' \
+    && ok "a nonsense search returns nobody" || bad "nonsense search"
+
+  # Wildcards escaped, same as everywhere else.
+  api "$BASE_URL/api/addressbook?q=%25%25" | grep -q 'Grace Bookhopper' \
+    && bad "wildcards were not escaped" || ok "wildcards in a search are escaped"
+
+  # It is a view: deleting the source removes the entry, with nothing to
+  # clean up separately.
+  api -o /dev/null -X DELETE "$BASE_URL/api/people/$AB_PID"
+  AB2=$(api "$BASE_URL/api/addressbook?q=addressbook.invalid")
+  echo "$AB2" | grep -q '"source":"person"' \
+    && bad "a deleted person lingered in the address book" || ok "deleting the source removes it"
+  echo "$AB2" | grep -q 'Grace Bookhopper' \
+    && ok "the client contact half survives" || bad "the whole entry vanished"
+
+  api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$AB_CID"
+fi
+
 # -------------------------------------------------------- client logos
 
 head_ "Client logos"

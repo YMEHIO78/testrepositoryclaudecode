@@ -1128,3 +1128,41 @@ something a canvas does in ten lines.
 - **No logo shows initials**, on a colour derived from the client's name
   so it is stable rather than changing on every render. A blank hole or a
   broken-image icon would look like a fault.
+
+### The address book
+
+**People → Address book** lists everyone this app already knows about,
+folded into one entry per person.
+
+**It is a view, not a table**, and that is the whole design. There is no
+`addressbook` table and there should not be one: every name already
+lives somewhere that owns it, and copying them into a fourth place would
+mean four copies drifting apart the first time an address changed. The
+cost is a `UNION` query instead of a `SELECT`; the benefit is that it
+cannot go stale, and deleting a person removes them from here with
+nothing to clean up separately.
+
+Three sources:
+
+| Source | Who that is |
+| --- | --- |
+| `people` | you, employees, contractors |
+| `contacts` | the people at your clients |
+| `bookings` | anyone who booked through the public page |
+
+Bookings are included because "everyone we recognise" is the point, and
+someone who booked a call is unambiguously recognised. They are labelled
+by **when they last booked** rather than dressed up as a role — a
+one-off enquiry should not look like a relationship.
+
+**Folding** is matched on email address, lowercased, because that is the
+only identifier the three sources share. Someone who is both a
+contractor and a client contact is one row showing both, which is most of
+the value of the page. Two consequences worth knowing:
+
+- **Anyone without an email address stands alone.** They cannot be
+  matched to anything, and guessing by name would eventually merge two
+  different people — a worse failure than listing one person twice.
+- **The fullest name wins.** Bookings often carry "Ada" where a contact
+  record has the surname, so the longer of the two is kept. A phone
+  number from any source survives the fold.

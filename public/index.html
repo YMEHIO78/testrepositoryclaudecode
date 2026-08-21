@@ -414,6 +414,13 @@
   /* Logos are user-supplied and arrive in every shape and colour, so
      they are always cropped square and rounded — a row of ragged
      rectangles reads as broken rather than as branding. */
+  .seg{display:inline-flex;gap:0;margin-bottom:14px;border:1px solid var(--color-divider);
+    border-radius:var(--radius-md);overflow:hidden;}
+  .seg-btn{font:inherit;font-size:13px;padding:6px 14px;background:none;border:0;cursor:pointer;
+    color:var(--color-neutral-600);}
+  .seg-btn + .seg-btn{border-left:1px solid var(--color-divider);}
+  .seg-btn.active{background:var(--color-accent-100);color:var(--color-accent);font-weight:600;}
+  .known-pill{display:inline-flex;align-items:center;gap:4px;margin:1px 4px 1px 0;}
   .avatar{display:inline-flex;align-items:center;justify-content:center;flex:none;
     border-radius:var(--radius-md);object-fit:cover;background:var(--color-neutral-200);
     vertical-align:middle;}
@@ -1062,19 +1069,46 @@
       <h1>People</h1>
       <p class="sub">You plus contractors. Rates feed project cost; assignments show who is on what.</p>
 
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
-        <button type="button" class="btn" id="peopleAdd">Add person</button>
-        <select id="peopleFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
-          <option value="1">Active only</option>
-          <option value="">Everyone</option>
-        </select>
+      <div class="seg" role="tablist">
+        <button type="button" class="seg-btn active" data-peopletab="team" role="tab">Team</button>
+        <button type="button" class="seg-btn" data-peopletab="book" role="tab">Address book</button>
       </div>
 
-      <div class="card">
-        <table>
-          <thead><tr><th>Name</th><th>Role</th><th>Type</th><th>Rate</th><th>On projects</th></tr></thead>
-          <tbody id="peopleRows"><tr><td colspan="5" class="msg-snippet">Loading…</td></tr></tbody>
-        </table>
+      <div id="peopleTeam">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+          <button type="button" class="btn" id="peopleAdd">Add person</button>
+          <select id="peopleFilter" style="padding:6px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
+            <option value="1">Active only</option>
+            <option value="">Everyone</option>
+          </select>
+        </div>
+
+        <div class="card">
+          <table>
+            <thead><tr><th>Name</th><th>Role</th><th>Type</th><th>Rate</th><th>On projects</th></tr></thead>
+            <tbody id="peopleRows"><tr><td colspan="5" class="msg-snippet">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="peopleBook" class="hidden">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+          <input type="search" id="bookSearch" placeholder="Search everyone…" autocomplete="off"
+                 style="min-width:240px;padding:6px 9px;border:1px solid var(--line);border-radius:var(--radius-md);font-size:12.5px;font-family:inherit;background:var(--panel);color:var(--ink);">
+          <span class="msg-snippet" id="bookCount"></span>
+        </div>
+
+        <div class="card">
+          <table>
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Known as</th></tr></thead>
+            <tbody id="bookRows"><tr><td colspan="4" class="msg-snippet">Loading…</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="note">Assembled from your team, your clients' contacts, and anyone who has
+          booked a meeting. Nothing is stored here — each entry is read from the record that
+          owns it, so it cannot go stale. Someone who appears in more than one place is folded
+          into a single row, matched on email address.</div>
       </div>
 
       <div class="note"><b>No per-person access control exists.</b> The app has a single shared login, so everyone who can sign in sees everything — Clients &amp; Leads and Finance included. This page records who your people are and what they cost; it does not restrict anything. Giving contractors scoped access would need real per-user accounts first.</div>
@@ -4915,6 +4949,69 @@
   function rateLabel(cents){
     return cents == null ? '—' : `${money(cents, false)}/hr`;
   }
+
+  // --- Address book ---
+  //
+  // One entry per person, assembled from people, client contacts and
+  // bookings. The "Known as" column is the point: it says where each
+  // name is known from, and someone who turns up in two places shows
+  // both rather than appearing twice.
+  let bookSearchTimer = null;
+
+  function knownPill(k){
+    if (k.source === 'person') {
+      const label = k.detail ? k.detail[0].toUpperCase() + k.detail.slice(1) : 'Team';
+      return `<span class="pill ${k.detail === 'owner' ? 'brand' : 'grey'} known-pill">${escapeHtml(label)}${
+        k.active ? '' : ' · inactive'}</span>`;
+    }
+    if (k.source === 'contact') {
+      return `<span class="pill grey known-pill">${
+        k.org ? `<a data-client="${k.clientId}">${escapeHtml(k.org)}</a>` : 'Client contact'}${
+        k.detail === 'primary' ? ' · primary' : ''}</span>`;
+    }
+    // A booking is an event, not a relationship, so it is labelled by
+    // when it last happened rather than dressed up as a role.
+    return `<span class="pill amber known-pill">Booked ${escapeHtml(k.detail || 'a meeting')}</span>`;
+  }
+
+  async function loadAddressBook(){
+    const rows = document.getElementById('bookRows');
+    if (!rows) return;
+    const q = document.getElementById('bookSearch').value.trim();
+
+    try {
+      const d = await (await fetch(`/api/addressbook${q ? '?q=' + encodeURIComponent(q) : ''}`)).json();
+      document.getElementById('bookCount').textContent =
+        `${d.count} ${d.count === 1 ? 'person' : 'people'}${q ? ' matching' : ' in total'}`;
+
+      rows.innerHTML = d.entries.length ? d.entries.map(e => `
+        <tr>
+          <td><b>${escapeHtml(e.name || '—')}</b></td>
+          <td>${e.email ? `<a href="mailto:${escapeHtml(e.email)}">${escapeHtml(e.email)}</a>` : '—'}</td>
+          <td>${e.phone ? escapeHtml(e.phone) : '—'}</td>
+          <td>${e.known.map(knownPill).join('')}</td>
+        </tr>`).join('')
+        : `<tr><td colspan="4" class="msg-snippet">${q ? 'Nobody matches that.' : 'Nobody yet.'}</td></tr>`;
+    } catch (err) {
+      rows.innerHTML = '<tr><td colspan="4" class="msg-snippet">Could not load the address book.</td></tr>';
+    }
+  }
+
+  document.getElementById('view-people').addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-peopletab]');
+    if (!tab) return;
+    const book = tab.dataset.peopletab === 'book';
+    document.querySelectorAll('[data-peopletab]').forEach(b =>
+      b.classList.toggle('active', b === tab));
+    document.getElementById('peopleTeam').classList.toggle('hidden', book);
+    document.getElementById('peopleBook').classList.toggle('hidden', !book);
+    if (book) loadAddressBook();
+  });
+
+  document.getElementById('bookSearch').addEventListener('input', () => {
+    clearTimeout(bookSearchTimer);
+    bookSearchTimer = setTimeout(loadAddressBook, 250);
+  });
 
   async function loadPeople(){
     const rows = document.getElementById('peopleRows');

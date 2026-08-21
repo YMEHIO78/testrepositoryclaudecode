@@ -25,6 +25,7 @@ const folders = require('./lib/folders');
 const diagrams = require('./lib/diagrams');
 const blocklist = require('./lib/blocklist');
 const templates = require('./lib/templates');
+const addressbook = require('./lib/addressbook');
 const packages = require('./lib/packages');
 const search = require('./lib/search');
 const exporter = require('./lib/export');
@@ -1705,6 +1706,19 @@ app.get('/diagram/:id', (req, res) => {
 });
 
 // --- People ---
+
+// Everyone the app knows about, folded into one entry per person. A view
+// over people, contacts and bookings — see lib/addressbook.js for why
+// there is deliberately no table behind it.
+app.get('/api/addressbook', async (req, res) => {
+  try {
+    const entries = await addressbook.list(req.query.q || '');
+    res.json({ count: entries.length, entries });
+  } catch (err) {
+    console.error('Failed to build the address book:', err);
+    res.status(500).json({ error: 'Could not load the address book.' });
+  }
+});
 
 app.get('/api/people', async (req, res) => {
   try {
