@@ -411,6 +411,20 @@
 
   /* Detail pages (client, ticket) */
   .crumb-back{display:inline-block;font-size:13px;color:var(--color-accent);margin-bottom:var(--space-2);}
+  /* Logos are user-supplied and arrive in every shape and colour, so
+     they are always cropped square and rounded — a row of ragged
+     rectangles reads as broken rather than as branding. */
+  .avatar{display:inline-flex;align-items:center;justify-content:center;flex:none;
+    border-radius:var(--radius-md);object-fit:cover;background:var(--color-neutral-200);
+    vertical-align:middle;}
+  .avatar.initials{font-weight:600;letter-spacing:.02em;}
+  .crm-card .name .avatar{margin-right:6px;}
+  .avatar-btn{padding:0;border:0;background:none;cursor:pointer;line-height:0;flex:none;}
+  .avatar-btn:hover .avatar{outline:2px solid var(--color-accent);outline-offset:2px;}
+  .detail-title{display:flex;align-items:center;gap:12px;}
+  /* Beats `.detail-head h1`, which sets a bottom margin further down and
+     would otherwise push the name 3px off centre from the logo. */
+  .detail-head .detail-title h1{margin:0;}
   .detail-head{border-bottom:1px solid rgba(32,30,29,.18);padding-bottom:var(--space-3);margin-bottom:var(--space-4);}
   .detail-head h1{font-size:34px;margin:0 0 6px;letter-spacing:-.015em;}
   .detail-meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:14px;color:#605d5d;}
@@ -2303,6 +2317,79 @@
     };
   }
 
+  // --- Client logos ---
+  //
+  // Shrunk here rather than on the server: there is no image library in
+  // this app and adding one would mean a native dependency and a build
+  // step, for something a canvas does in ten lines. It also means only a
+  // few KB crosses the wire instead of whatever came off someone's
+  // desktop.
+  const LOGO_PX = 192;
+
+  function shrinkImage(file){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Could not read that file.'));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('That does not look like an image.'));
+        img.onload = () => {
+          // Square, cropped from the centre: logos vary wildly in shape
+          // and a row of different-shaped images looks like a mistake.
+          const side = Math.min(img.width, img.height);
+          const canvas = document.createElement('canvas');
+          canvas.width = LOGO_PX;
+          canvas.height = LOGO_PX;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img,
+            (img.width - side) / 2, (img.height - side) / 2, side, side,
+            0, 0, LOGO_PX, LOGO_PX);
+          // PNG keeps flat logo colours crisp and keeps transparency;
+          // JPEG would put grey boxes behind every transparent logo.
+          resolve(canvas.toDataURL('image/png'));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Initials when there is no logo, so a row never shows a broken image
+  // or an empty hole. The colour is derived from the name, so it is
+  // stable for a client rather than changing on every render.
+  function clientAvatar(c, size){
+    const px = size || 28;
+    if (c.logo) {
+      return `<img class="avatar" style="width:${px}px;height:${px}px;"
+                   src="${escapeHtml(c.logo)}" alt="">`;
+    }
+    const initials = String(c.name || '?').trim().split(/\s+/).slice(0, 2)
+      .map(w => w[0]).join('').toUpperCase();
+    let hash = 0;
+    for (const ch of String(c.name || '')) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
+    return `<span class="avatar initials" aria-hidden="true"
+                  style="width:${px}px;height:${px}px;font-size:${Math.round(px * 0.38)}px;
+                         background:hsl(${hash} 42% 88%);color:hsl(${hash} 45% 32%);">${escapeHtml(initials)}</span>`;
+  }
+
+  async function uploadClientLogo(clientId, file){
+    try {
+      const logo = await shrinkImage(file);
+      const res = await fetch(`/api/crm/clients/${clientId}/logo`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logo }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Could not save that logo.');
+      await loadCrm();
+      openClientDetail(clientId);
+    } catch (err) {
+      showBanner(err.message, 'error');
+    }
+  }
+
   // --- Recipient suggestions ---
   //
   // The box holds several addresses separated by commas, so everything
@@ -2970,7 +3057,14 @@
 
     wrap.innerHTML = `
       <div class="detail-head">
-        <h1>${escapeHtml(c.name)}</h1>
+        <div class="detail-title">
+          <button type="button" class="avatar-btn" id="cdLogoBtn"
+                  title="${c.logo ? 'Change or remove the logo' : 'Add a logo'}">
+            ${clientAvatar(c, 52)}
+          </button>
+          <h1>${escapeHtml(c.name)}</h1>
+        </div>
+        <input type="file" id="cdLogoInput" accept="image/*" hidden>
         <div class="detail-meta">
           <select class="inline-select" id="cdStage" aria-label="Stage">
             ${crmData.stages.map(s => `<option value="${s.key}" ${c.stage === s.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
@@ -3164,6 +3258,27 @@
           </div>` : ''}
         </div>
       </div>`;
+
+    // Clicking the avatar picks a file; with one already set it offers
+    // to remove instead, so there is no separate delete button cluttering
+    // the header for the common case.
+    document.getElementById('cdLogoBtn').onclick = () => {
+      if (c.logo && confirm('Remove this logo?')) {
+        fetch(`/api/crm/clients/${c.id}/logo`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ logo: null }),
+        }).then(async () => { await loadCrm(); openClientDetail(c.id); });
+        return;
+      }
+      if (!c.logo) document.getElementById('cdLogoInput').click();
+    };
+
+    document.getElementById('cdLogoInput').onchange = (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (file) uploadClientLogo(c.id, file);
+    };
 
     document.getElementById('cdEdit').onclick = () => {
       const fresh = crmData.clients.find(x => x.id === c.id) || c;
@@ -5673,7 +5788,7 @@
     const primary = c.contacts.find(x => x.isPrimary) || c.contacts[0];
     return `
       <tr data-id="${c.id}" style="cursor:pointer;">
-        <td><b>${escapeHtml(c.name)}</b></td>
+        <td><span class="name-cell">${clientAvatar(c, 24)}<b>${escapeHtml(c.name)}</b></span></td>
         <td><span class="pill ${meta.tone}">${escapeHtml(meta.label)}</span></td>
         <td>${primary ? escapeHtml(primary.name) : '—'}</td>
         <td>${c.contacts.length || '—'}</td>
@@ -5733,7 +5848,7 @@
     const primary = c.contacts.find(x => x.isPrimary) || c.contacts[0];
     return `
       <button type="button" class="crm-card" data-id="${c.id}"${healthTone(c.health) ? ` data-health="${healthTone(c.health)}"` : ''}>
-        <span class="name">${escapeHtml(c.name)}</span>
+        <span class="name">${clientAvatar(c, 20)}${escapeHtml(c.name)}</span>
         <span class="person">${primary ? escapeHtml(primary.name) : 'No contact yet'}</span>
         <span class="pkgs">${escapeHtml(c.packagesSummary || 'No packages')}</span>
         <span class="foot">

@@ -636,6 +636,20 @@ app.post('/api/inbox/send', express.json({ limit: '1mb' }), async (req, res) => 
   }
 });
 
+// A client's logo. Its own route rather than a field on the client
+// editor: an image is far bigger than everything else on that form, and
+// sending it with every unrelated name change would be wasteful.
+app.put('/api/crm/clients/:id/logo', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    const { logo } = req.body || {};
+    const saved = await crm.setLogo(Number(req.params.id), logo === null ? null : logo);
+    if (!saved) return res.status(404).json({ error: 'Not found.' });
+    res.json(saved);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Recipient suggestions for the To box. Short queries return nothing
 // rather than the first eight contacts alphabetically — a suggestion
 // list that ignores what you typed is worse than no list.

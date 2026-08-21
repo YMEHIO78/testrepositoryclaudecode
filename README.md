@@ -1096,3 +1096,35 @@ The details that make it usable rather than annoying:
 
 Wildcards are escaped the same way as global search, so a literal `%`
 searches for that character instead of matching the whole address book.
+
+### Client logos
+
+Each client can carry a logo. Click the square beside their name on the
+client page to add one; click it again to remove it. It then appears in
+the client list and on the pipeline board.
+
+**Stored in Postgres, not the bucket.** The bucket has no backups on any
+plan, so a logo there would be unrecoverable; in `clients.logo` it rides
+along in the JSON export like everything else. That is only affordable
+because of the next point.
+
+**Shrunk in the browser before upload.** A canvas crops the picked image
+to a centre square and redraws it at 192px, so a few KB crosses the wire
+instead of whatever came off someone's desktop. Doing it server-side
+would mean an image library — a native dependency and a build step — for
+something a canvas does in ten lines.
+
+- **PNG, JPEG and WebP only.** SVG is refused even though it is an image:
+  it can carry markup, and storing markup invites something to render it
+  as markup later rather than as a picture. Everything that arrives has
+  been through a canvas anyway, so it is already raster.
+- **Cropped square.** Logos arrive in every shape; a row of ragged
+  rectangles reads as broken rather than as branding.
+- **PNG rather than JPEG on the way out**, so flat logo colours stay
+  crisp and transparency survives — JPEG would put a grey box behind
+  every transparent logo.
+- **128KB cap, enforced on the server.** A rejected upload leaves the
+  stored logo untouched.
+- **No logo shows initials**, on a colour derived from the client's name
+  so it is stable rather than changing on every render. A blank hole or a
+  broken-image icon would look like a fault.

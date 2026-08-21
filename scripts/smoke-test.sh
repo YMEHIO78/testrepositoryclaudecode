@@ -345,6 +345,57 @@ else
   api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$VCID"
 fi
 
+# -------------------------------------------------------- client logos
+
+head_ "Client logos"
+
+LC=$(api -X POST "$BASE_URL/api/crm/clients" -H 'Content-Type: application/json' \
+  -d '{"name":"Logo Test Co","stage":"client"}')
+LCID=$(echo "$LC" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+if [ -z "$LCID" ]; then
+  bad "could not create client for logo tests" "$LC"
+else
+  # A 1x1 PNG is enough to prove the path; the browser is what resizes.
+  PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+  R=$(api -X PUT "$BASE_URL/api/crm/clients/$LCID/logo" -H 'Content-Type: application/json' \
+    -d "{\"logo\":\"$PNG\"}")
+  echo "$R" | grep -q 'data:image/png' && ok "a logo can be set" || bad "logo not saved" "$(echo "$R" | head -c 200)"
+
+  api "$BASE_URL/api/crm/clients" | grep -q 'data:image/png' \
+    && ok "the logo comes back with the client list" || bad "logo missing from the list"
+
+  # The logo goes into an <img src>. SVG is refused even though it is an
+  # image: it can carry markup, and storing it invites something to
+  # render it as markup later.
+  for badlogo in \
+    'data:image/svg+xml;base64,PHN2Zy8+' \
+    'javascript:alert(1)' \
+    'https://example.invalid/logo.png' \
+    'not a uri' ; do
+    code=$(api -o /dev/null -w '%{http_code}' -X PUT "$BASE_URL/api/crm/clients/$LCID/logo" \
+      -H 'Content-Type: application/json' -d "{\"logo\":\"$badlogo\"}")
+    [ "$code" = "400" ] && ok "logo rejects '$badlogo'" || bad "a bad logo was accepted" "'$badlogo' got $code"
+  done
+
+  # Oversized images are refused rather than silently truncated.
+  BIG=$(printf 'data:image/png;base64,%s' "$(head -c 200000 /dev/zero | tr '\0' 'A')")
+  code=$(api -o /dev/null -w '%{http_code}' -X PUT "$BASE_URL/api/crm/clients/$LCID/logo" \
+    -H 'Content-Type: application/json' -d "{\"logo\":\"$BIG\"}")
+  [ "$code" = "400" ] && ok "an oversized logo is refused" || bad "oversized logo accepted" "got $code"
+
+  # And the refusals must not have clobbered the good one.
+  api "$BASE_URL/api/crm/clients/$LCID/detail" | grep -q 'iVBORw0KGgo' \
+    && ok "a rejected logo leaves the stored one alone" || bad "the stored logo was lost"
+
+  api -o /dev/null -X PUT "$BASE_URL/api/crm/clients/$LCID/logo" \
+    -H 'Content-Type: application/json' -d '{"logo":null}'
+  api "$BASE_URL/api/crm/clients/$LCID/detail" | grep -q 'iVBORw0KGgo' \
+    && bad "the logo was not removed" || ok "a logo can be removed"
+
+  api -o /dev/null -X DELETE "$BASE_URL/api/crm/clients/$LCID"
+fi
+
 # --------------------------------------------- recipient suggestions
 
 head_ "Contact suggestions"
