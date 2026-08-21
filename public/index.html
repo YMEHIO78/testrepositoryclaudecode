@@ -2364,10 +2364,12 @@
       return `<img class="avatar" style="width:${px}px;height:${px}px;"
                    src="${escapeHtml(c.logo)}" alt="">`;
     }
-    const initials = String(c.name || '?').trim().split(/\s+/).slice(0, 2)
-      .map(w => w[0]).join('').toUpperCase();
+    // Trim before falling back, or a name of only spaces is "truthy"
+    // and yields no initials at all — a blank box in the list.
+    const name = String(c.name || '').trim() || '?';
+    const initials = name.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
     let hash = 0;
-    for (const ch of String(c.name || '')) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
+    for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
     return `<span class="avatar initials" aria-hidden="true"
                   style="width:${px}px;height:${px}px;font-size:${Math.round(px * 0.38)}px;
                          background:hsl(${hash} 42% 88%);color:hsl(${hash} 45% 32%);">${escapeHtml(initials)}</span>`;
