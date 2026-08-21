@@ -2994,6 +2994,20 @@
 
       <div class="detail-cols">
         <div>
+          <!-- Contacts first: on a page about a company, the people you
+               actually deal with are the thing you came for. -->
+          <div class="detail-section">
+            <h2>Contacts</h2>
+            ${c.contacts.length ? c.contacts.map(ct => `
+              <div class="detail-row">
+                <span>
+                  <b>${escapeHtml(ct.name)}</b>${ct.isPrimary ? ' <span class="pill brand">primary</span>' : ''}
+                  <div class="sub">${escapeHtml(ct.email || 'no email')}${ct.role ? ' · ' + escapeHtml(ct.role) : ''}</div>
+                </span>
+              </div>`).join('')
+              : '<p class="detail-empty">No contacts yet.</p>'}
+          </div>
+
           <div class="detail-section">
             <h2>Tickets</h2>
             ${d.tickets.length ? d.tickets.map(t => `
@@ -3141,18 +3155,6 @@
             <div class="detail-row"><span>Open tickets</span><span>${openTk.length}</span></div>
             <div class="detail-row"><span>Outstanding</span><span>${escapeHtml(money(outstanding, false))}</span></div>
             <div class="detail-row"><span>Contacts</span><span>${c.contacts.length}</span></div>
-          </div>
-
-          <div class="detail-section">
-            <h2>Contacts</h2>
-            ${c.contacts.length ? c.contacts.map(ct => `
-              <div class="detail-row">
-                <span>
-                  <b>${escapeHtml(ct.name)}</b>${ct.isPrimary ? ' <span class="pill brand">primary</span>' : ''}
-                  <div class="sub">${escapeHtml(ct.email || 'no email')}${ct.role ? ' · ' + escapeHtml(ct.role) : ''}</div>
-                </span>
-              </div>`).join('')
-              : '<p class="detail-empty">No contacts yet.</p>'}
           </div>
 
           ${c.notes ? `
