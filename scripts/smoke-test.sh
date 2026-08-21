@@ -401,6 +401,47 @@ api "$BASE_URL/api/templates" | grep -q 'Smoke follow-up renamed' \
 api "$BASE_URL/api/export" | grep -q 'email_templates' \
   && ok "templates are in the backup export" || bad "templates missing from export"
 
+# A template subject is filled from the same values as the body, and is
+# reported in the same unresolved list.
+TS=$(api -X POST "$BASE_URL/api/templates" -H 'Content-Type: application/json' \
+  -d '{"name":"Smoke subject tpl","subject":"About {{client}}","body":"Hello."}')
+TSID=$(echo "$TS" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+echo "$TS" | grep -q '"subject":"About {{client}}"' \
+  && ok "a template can carry a subject" || bad "subject not stored" "$(echo "$TS" | head -c 200)"
+
+RS=$(api -X POST "$BASE_URL/api/templates/$TSID/render" -H 'Content-Type: application/json' \
+  -d '{"message":{"from":"Ada","client":{"name":"Zephyr Logistics"}}}')
+echo "$RS" | grep -q '"subject":"About Zephyr Logistics"' \
+  && ok "placeholders are filled in the subject too" || bad "subject not rendered" "$(echo "$RS" | head -c 200)"
+
+RS2=$(api -X POST "$BASE_URL/api/templates/$TSID/render" -H 'Content-Type: application/json' -d '{}')
+echo "$RS2" | grep -o '"unresolved":\[[^]]*\]' | grep -q 'client' \
+  && ok "an unfilled subject placeholder is reported" || bad "subject placeholder not reported"
+
+api -o /dev/null -X DELETE "$BASE_URL/api/templates/$TSID"
+
+# --- sending a new email ---
+# Nothing here actually sends: every case must be refused before it
+# reaches SMTP, because the one that is not refused is not recoverable.
+
+code=$(api -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/inbox/send" \
+  -H 'Content-Type: application/json' -d '{"account":"nope@example.invalid","to":"a@b.com","body":"hi"}')
+[ "$code" = "400" ] && ok "send rejects an unknown mailbox" || bad "mailbox validation" "got $code"
+
+SENDACCT=$(api "$BASE_URL/api/mailboxes" | grep -o '"email":"[^"]*"' | head -1 | cut -d'"' -f4)
+if [ -z "$SENDACCT" ]; then
+  bad "no mailbox configured" "skipping send validation"
+else
+  for payload in \
+    "{\"account\":\"$SENDACCT\",\"to\":\"\",\"body\":\"hi\"}" \
+    "{\"account\":\"$SENDACCT\",\"to\":\"not-an-address\",\"body\":\"hi\"}" \
+    "{\"account\":\"$SENDACCT\",\"to\":\"a@b.com\",\"body\":\"   \"}" ; do
+    code=$(api -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/inbox/send" \
+      -H 'Content-Type: application/json' -d "$payload")
+    [ "$code" = "400" ] && ok "send refuses $payload" || bad "send accepted a bad payload" "$payload got $code"
+  done
+fi
+
 api -o /dev/null -X DELETE "$BASE_URL/api/templates/$TPLID"
 api "$BASE_URL/api/templates" | grep -q 'Smoke follow-up renamed' \
   && bad "delete did not remove the template" || ok "a template can be deleted"

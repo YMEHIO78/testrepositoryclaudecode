@@ -1020,3 +1020,49 @@ Rendering happens server-side (`POST /api/templates/:id/render`) so there
 is one implementation of the substitution and it can be tested. It
 re-fetches the message rather than trusting what the page sent, because
 the client match comes from the CRM rather than the browser.
+
+### Writing a new email
+
+**New email** sits beside the Inbox heading. It opens in the reading pane
+rather than a modal — something you have spent five minutes typing into
+should not be one stray Escape key away from gone.
+
+Pick which mailbox it comes from, one or more recipients (comma
+separated), a subject, and a body; templates can be inserted the same way
+as in a reply. **This is where a template's subject applies** — a reply
+or forward keeps the subject of its own thread, so it is ignored there.
+
+Guards, because this is the one place in the app that sends something
+irreversible to an address of your choosing:
+
+- Recipients are validated **on the server**, not only in the browser,
+  and capped at 20 per message.
+- An empty body is refused.
+- An empty subject asks first. It is allowed — some mail genuinely has
+  none — but it is never silently filled in with something invented.
+- A template never overwrites a subject you have already typed, and is
+  inserted above an existing draft rather than over it.
+
+### Sent mail is now actually saved
+
+SMTP delivers a message and forgets it. Nothing about sending puts a copy
+anywhere you can look, which meant **every reply and forward sent from
+this app before this change existed only in the recipient's inbox** — not
+in Sent on the server, not in webmail, not on the phone, not here. "Did
+that go?" with no way to check is a bad position to be in about client
+correspondence.
+
+Now every outgoing message — new mail, replies and forwards alike — is
+appended to the mailbox's Sent folder over IMAP, marked `\Seen`:
+
+- The bytes filed are the **same bytes that were sent**, composed once
+  with `MailComposer` and handed to both SMTP and `append`, rather than
+  re-rendered into something that could differ.
+- The Sent folder is found via SPECIAL-USE, same as Junk and Trash.
+- If the copy fails, **the send is still reported as a success**, because
+  it was one — the message is already delivered by that point. The UI
+  says the copy could not be filed instead of implying it is somewhere it
+  is not.
+- `MailComposer` is loaded defensively. It is an internal path in
+  nodemailer, and losing the ability to send mail because a copy could
+  not be filed would be a poor trade.

@@ -597,6 +597,45 @@ app.post('/api/inbox/not-spam', express.json(), async (req, res) => {
   }
 });
 
+// A new email, not a reply to anything. The recipient is validated here
+// rather than only in the browser — this is the one endpoint in the app
+// that sends something irreversible to an address of your choosing.
+app.post('/api/inbox/send', express.json({ limit: '1mb' }), async (req, res) => {
+  const { account, to, subject, body } = req.body || {};
+
+  if (!configuredMailboxes().includes(account)) {
+    return res.status(400).json({ error: 'Unknown mailbox.' });
+  }
+
+  // Comma-separated, because that is what people paste in.
+  const recipients = String(to || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!recipients.length) return res.status(400).json({ error: 'Who is it going to?' });
+  if (recipients.length > 20) return res.status(400).json({ error: 'That is too many recipients at once.' });
+
+  const bad = recipients.filter((r) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r));
+  if (bad.length) {
+    return res.status(400).json({ error: `Not a valid address: ${bad.join(', ')}` });
+  }
+  if (!String(body || '').trim()) {
+    return res.status(400).json({ error: 'The message is empty.' });
+  }
+
+  try {
+    const result = await mail.sendMail({
+      from: account,
+      to: recipients.join(', '),
+      // An empty subject is allowed — some mail genuinely has none — but
+      // it is never silently replaced with something invented.
+      subject: String(subject || '').trim(),
+      text: body,
+    });
+    res.json({ sent: true, to: recipients, ...result });
+  } catch (err) {
+    console.error('Failed to send mail:', err);
+    res.status(502).json({ error: `Could not send: ${err.message}` });
+  }
+});
+
 // --- Email templates ---
 
 app.get('/api/templates', async (req, res) => {
@@ -665,7 +704,7 @@ app.post('/api/templates/:id/render', express.json(), async (req, res) => {
       }
     }
 
-    const rendered = templates.render(tpl.body, templates.contextFrom(message || {}));
+    const rendered = templates.render(tpl, templates.contextFrom(message || {}));
     await templates.recordUse(tpl.id);
     res.json({ id: tpl.id, name: tpl.name, ...rendered });
   } catch (err) {

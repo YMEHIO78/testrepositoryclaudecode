@@ -203,6 +203,17 @@
   /* Unfilled placeholders are a "look at this before you send" note, not
      an error — the message is still perfectly sendable once you edit it. */
   .tpl-warn{font-size:12px;color:var(--color-accent-2);}
+  .inbox-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
+  .inbox-title h1{margin:0;}
+  .compose{display:flex;flex-direction:column;gap:4px;}
+  .compose label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+    font-weight:600;margin-top:8px;}
+  .compose label .sub{text-transform:none;letter-spacing:0;font-weight:400;}
+  .compose input,.compose select,.compose textarea{width:100%;font:inherit;font-size:15px;padding:8px 10px;
+    border:1px solid var(--line);border-radius:var(--radius-md);background:var(--color-surface);
+    color:var(--ink);}
+  .compose textarea{min-height:220px;resize:vertical;margin-top:8px;}
+  .compose-actions{display:flex;gap:10px;align-items:center;margin-top:12px;}
   /* Package quantity stepper, from the design reference: 30px square
      buttons either side of a fixed-width count, so the number does not
      shift as it goes from 9 to 10. */
@@ -701,7 +712,10 @@
     <div class="view inbox-view hidden" id="view-inbox">
       <div class="inbox-list">
         <div class="inbox-list-head">
-          <h1>Inbox</h1>
+          <div class="inbox-title">
+            <h1>Inbox</h1>
+            <button type="button" class="btn" id="composeBtn">New email</button>
+          </div>
           <div class="inbox-search">
             <input type="search" id="inboxSearch" placeholder="Search mail…" autocomplete="off">
             <button type="button" id="inboxSearchClear" class="hidden" title="Clear search">×</button>
@@ -2195,8 +2209,8 @@
       kicker: 'Inbox',
       title: 'Email templates',
       body: `
-        <p class="msg-snippet">Reusable reply bodies. There is no subject field —
-          replies and forwards keep the subject of the thread they belong to.</p>
+        <p class="msg-snippet">Reusable subjects and bodies. The subject is used only by
+          <b>New email</b> — a reply or forward keeps the subject of its own thread.</p>
         <div id="tplRows" style="margin:var(--space-3) 0;">
           ${d.templates.length ? d.templates.map(t => `
             <div class="detail-row" data-tpl="${t.id}">
@@ -2215,6 +2229,8 @@
         </div>
         <label>Name</label>
         <input type="text" id="tplName" placeholder="Intro call follow-up">
+        <label>Subject <span class="sub">(optional — new emails only)</span></label>
+        <input type="text" id="tplSubject" placeholder="Following up on our call">
         <label>Body</label>
         <textarea id="tplBody" rows="7" style="width:100%;font:inherit;font-size:14px;padding:8px;
           border:1px solid var(--color-divider);background:var(--color-surface);color:var(--color-text);
@@ -2247,6 +2263,7 @@
         if (!t) return;
         editingId = t.id;
         document.getElementById('tplName').value = t.name;
+        document.getElementById('tplSubject').value = t.subject || '';
         document.getElementById('tplBody').value = t.body;
         modal.querySelector('[data-modal="save"]').textContent = 'Save changes';
         modalStatus(`Editing "${t.name}".`);
@@ -2256,6 +2273,7 @@
     modal.querySelector('[data-modal="save"]').onclick = async () => {
       const body = {
         name: document.getElementById('tplName').value,
+        subject: document.getElementById('tplSubject').value,
         body: document.getElementById('tplBody').value,
       };
       try {
@@ -2274,6 +2292,126 @@
       }
     };
   }
+
+  // A new email, written in the reading pane so it has room. Deliberately
+  // not a modal: a modal you can dismiss with Escape is the wrong shape
+  // for something you have spent five minutes typing into.
+  function openCompose(){
+    const detail = document.getElementById('inboxDetail');
+    selectedMailId = null;
+    renderInboxList();
+
+    const accounts = inboxData.accounts || [];
+    if (!accounts.length) {
+      detail.innerHTML = '<p class="msg-snippet">No mailbox is connected, so there is nothing to send from.</p>';
+      return;
+    }
+
+    detail.innerHTML = `
+      <div class="mail-head"><h2>New email</h2></div>
+      <div class="compose">
+        <label>From</label>
+        <select id="cmpFrom">
+          ${accounts.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('')}
+        </select>
+        <label>To</label>
+        <input type="text" id="cmpTo" placeholder="someone@example.com, another@example.com" autocomplete="off">
+        <label>Subject</label>
+        <input type="text" id="cmpSubject" autocomplete="off">
+        <div class="tpl-bar">
+          <select id="cmpTemplate"><option value="">Insert a template…</option></select>
+          <button type="button" class="int-btn" id="cmpTemplateManage">Manage</button>
+          <span class="tpl-warn" id="cmpTemplateWarn"></span>
+        </div>
+        <textarea id="cmpBody" rows="14"></textarea>
+        <div class="compose-actions">
+          <button type="button" class="btn" id="cmpSend">Send</button>
+          <button type="button" class="btn ghost" id="cmpCancel">Discard</button>
+          <span class="reply-status" id="cmpStatus"></span>
+        </div>
+      </div>`;
+
+    document.getElementById('cmpTo').focus();
+    fillTemplatePicker(document.getElementById('cmpTemplate'));
+    document.getElementById('cmpTemplateManage').onclick = openTemplatesDialog;
+
+    // No message to fill placeholders from here, so most will be left
+    // standing — which is exactly what the warning line is for.
+    document.getElementById('cmpTemplate').onchange = async (e) => {
+      const id = e.target.value;
+      e.target.value = '';
+      if (!id) return;
+
+      const warn = document.getElementById('cmpTemplateWarn');
+      warn.textContent = '';
+      try {
+        const res = await fetch(`/api/templates/${id}/render`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Could not load that template.');
+
+        const subjectEl = document.getElementById('cmpSubject');
+        // Never overwrite a subject you have already typed.
+        if (d.subject && !subjectEl.value.trim()) subjectEl.value = d.subject;
+
+        const bodyEl = document.getElementById('cmpBody');
+        bodyEl.value = bodyEl.value.trim() ? d.body + '\n\n' + bodyEl.value : d.body;
+        bodyEl.focus();
+        bodyEl.setSelectionRange(0, 0);
+
+        if (d.unresolved.length) warn.textContent = `Still to fill in: ${d.unresolved.join(' ')}`;
+      } catch (err) {
+        warn.textContent = err.message;
+      }
+    };
+
+    document.getElementById('cmpCancel').onclick = () => {
+      const hasContent = document.getElementById('cmpTo').value.trim()
+        || document.getElementById('cmpBody').value.trim();
+      if (hasContent && !confirm('Discard this email?')) return;
+      detail.innerHTML = '<p class="msg-snippet">Select a message to read it.</p>';
+    };
+
+    document.getElementById('cmpSend').onclick = async () => {
+      const status = document.getElementById('cmpStatus');
+      const btn = document.getElementById('cmpSend');
+      const subject = document.getElementById('cmpSubject').value.trim();
+
+      // Sending is irreversible, so the one thing people regret — an
+      // empty subject line — gets a question rather than a silent send.
+      if (!subject && !confirm('Send with no subject?')) return;
+
+      btn.disabled = true;
+      status.textContent = 'Sending…';
+      try {
+        const res = await fetch('/api/inbox/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            account: document.getElementById('cmpFrom').value,
+            to: document.getElementById('cmpTo').value,
+            subject,
+            body: document.getElementById('cmpBody').value,
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Could not send that.');
+
+        // Say when the copy could not be filed, rather than implying the
+        // message is somewhere it is not.
+        detail.innerHTML = `<p class="msg-snippet">Sent to ${escapeHtml(d.to.join(', '))}.${
+          d.savedToSent ? ' A copy is in Sent.' : ' It could not be copied to Sent.'}</p>`;
+      } catch (err) {
+        btn.disabled = false;
+        status.textContent = err.message;
+      }
+    };
+  }
+
+  document.getElementById('composeBtn').addEventListener('click', openCompose);
 
   function openReply(msg){
     const wrap = document.getElementById('mailReply');
