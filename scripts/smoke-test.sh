@@ -1129,8 +1129,13 @@ else
   # so a folder query must not leak the level above it.
 
   NEST=$(mkfolder "{\"name\":\"Statements\",\"clientId\":$CLFID}")
-  api -o /dev/null -X POST "$BASE_URL/api/files?name=nested.txt&clientId=$CLFID&folderId=$NEST" \
-    -H 'Content-Type: text/plain' --data-binary 'inside the folder'
+  # Keep the id the upload returns. Digging it back out of the folder
+  # listing later picked up whatever id happened to be last in the JSON —
+  # often the folder's — so the file was never deleted and every run left
+  # one behind. Fifteen of them accumulated before anyone looked.
+  NESTED=$(api -X POST "$BASE_URL/api/files?name=nested.txt&clientId=$CLFID&folderId=$NEST" \
+    -H 'Content-Type: text/plain' --data-binary 'inside the folder')
+  NESTED_ID=$(echo "$NESTED" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
 
   ROOTVIEW=$(api "$BASE_URL/api/files?clientId=$CLFID&folder=root")
   echo "$ROOTVIEW" | grep -q '"name":"Statements"' \
@@ -1147,9 +1152,13 @@ else
   echo "$INVIEW" | grep -q '"breadcrumb":\[' && echo "$INVIEW" | grep -q 'Statements' \
     && ok "the folder view carries a breadcrumb for the path" || bad "no breadcrumb for the open folder"
 
-  NESTED_ID=$(echo "$INVIEW" | grep -o '"id":[0-9]*' | tail -1 | cut -d: -f2)
-  api -o /dev/null -X DELETE "$BASE_URL/api/files/$NESTED_ID"
+  # Assert the cleanup worked, rather than assuming it. A test that
+  # quietly litters the instance it runs against is worse than no test.
+  [ -n "$NESTED_ID" ] && api -o /dev/null -X DELETE "$BASE_URL/api/files/$NESTED_ID"
   api -o /dev/null -X DELETE "$BASE_URL/api/folders/$NEST"
+  api "$BASE_URL/api/files?clientId=$CLFID" | grep -q 'nested.txt' \
+    && bad "the test left nested.txt behind" "cleanup did not delete it" \
+    || ok "the folder test cleans up after itself"
 
   api -o /dev/null -X DELETE "$BASE_URL/api/files/$FA"
   api -o /dev/null -X DELETE "$BASE_URL/api/files/$FB"
