@@ -26,6 +26,7 @@ const diagrams = require('./lib/diagrams');
 const blocklist = require('./lib/blocklist');
 const templates = require('./lib/templates');
 const addressbook = require('./lib/addressbook');
+const onedrive = require('./lib/onedrive');
 const packages = require('./lib/packages');
 const search = require('./lib/search');
 const exporter = require('./lib/export');
@@ -1579,8 +1580,18 @@ app.delete('/api/files/:id', async (req, res) => {
 
 // Surfaced in Integrations so a misconfigured bucket is visible before
 // someone tries to upload.
+// Reports both stores, and which one a new upload would land in. With
+// two possible destinations, "file storage is fine" is no longer a
+// single yes or no.
 app.get('/api/files/status', async (req, res) => {
-  res.json(await files.check());
+  const bucket = await files.check();
+  let drive = { configured: false, connected: false };
+  try {
+    drive = await onedrive.status();
+  } catch (err) {
+    drive = { configured: onedrive.isConfigured(), connected: false, error: err.message };
+  }
+  res.json({ ...bucket, bucket, onedrive: drive, activeProvider: await files.activeProvider() });
 });
 
 // --- Diagrams (draw.io) ---
@@ -2131,6 +2142,69 @@ app.get('/api/scheduling/bookings', async (req, res) => {
 function googleRedirectUri(req) {
   return `${req.protocol}://${req.get('host')}/auth/google/callback`;
 }
+
+// --- OneDrive ---
+//
+// The callback sits under /api rather than /auth like Google's, because
+// the path was handed over before this was written and a redirect URI
+// has to match the app registration character for character. Not worth
+// making someone re-edit Azure for tidiness.
+function onedriveRedirectUri(req) {
+  return `${req.protocol}://${req.get('host')}/api/onedrive/callback`;
+}
+
+app.get('/api/onedrive/start', (req, res) => {
+  if (!onedrive.isConfigured()) {
+    return res.status(400).send('ONEDRIVE_CLIENT_ID / ONEDRIVE_CLIENT_SECRET are not set.');
+  }
+  const state = crypto.randomBytes(16).toString('hex');
+  req.session.onedriveOAuthState = state;
+  res.redirect(onedrive.buildAuthUrl({ redirectUri: onedriveRedirectUri(req), state }));
+});
+
+app.get('/api/onedrive/callback', async (req, res) => {
+  const expected = req.session.onedriveOAuthState;
+  delete req.session.onedriveOAuthState;
+
+  if (req.query.error) {
+    return res.redirect(`/?onedriveError=${encodeURIComponent(req.query.error_description || req.query.error)}`);
+  }
+  // The state check is what stops someone else's authorisation code
+  // being planted here.
+  if (!expected || req.query.state !== expected) {
+    return res.redirect('/?onedriveError=invalid_state');
+  }
+
+  try {
+    const tokens = await onedrive.exchangeCodeForToken({
+      code: req.query.code,
+      redirectUri: onedriveRedirectUri(req),
+    });
+    if (!tokens.refresh_token) {
+      // Without one this works for an hour and then quietly stops, with
+      // files becoming unreachable rather than obviously broken. Fail now.
+      return res.redirect('/?onedriveError=no_refresh_token');
+    }
+    await onedrive.saveTokens(tokens);
+    res.redirect('/?onedrive=connected#integrations');
+  } catch (err) {
+    console.error('OneDrive OAuth failed:', err);
+    res.redirect(`/?onedriveError=${encodeURIComponent(err.message)}`);
+  }
+});
+
+app.get('/api/onedrive/status', async (req, res) => {
+  try {
+    res.json(await onedrive.status());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/onedrive/disconnect', async (req, res) => {
+  await onedrive.disconnect();
+  res.status(204).end();
+});
 
 app.get('/auth/google/start', (req, res) => {
   if (!google.isConfigured()) {
