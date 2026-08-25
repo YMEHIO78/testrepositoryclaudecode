@@ -83,25 +83,27 @@ static snapshots with scripts disabled.
 
 ### Deploying
 
-**Railway does NOT auto-deploy on push.** Pushing to `main` publishes
-nothing on its own — every deploy is triggered explicitly.
+**Never assume a deploy happened. Check `list-deployments`.** It names
+the commit for each deployment and its status, and it is the only thing
+here that has been reliable.
 
-An earlier version of this file claimed the opposite. The evidence
-looked convincing and was not: a push was followed a few minutes later
-by the new code serving, so it looked like an auto-deploy. It was
-actually an earlier MCP deploy call landing late. `list-deployments`
-settled it — three deployments of one commit, matching three MCP
-attempts, and the two commits pushed afterwards never deployed at all.
+Two things make that necessary, both observed in one session:
 
-**The trap that caused it:** `railway-agent` sometimes returns
-`Anthropic proxy: MCP server connection lost` *after having already
-triggered the deploy*. The error is about the response, not the request.
-So:
+- **`railway-agent` returns errors after succeeding.** A call can come
+  back `Anthropic proxy: MCP server connection lost` having already
+  triggered the build. The error describes the response, not the
+  request. Retrying on that error stacks duplicate deploys — it happened
+  three times for one commit.
+- **Whether a push auto-deploys is not dependable.** One commit deployed
+  from a push with nothing else triggering it; another, pushed an hour
+  earlier, never deployed at all and the app quietly served old code.
+  There was a Railway incident open at the time, which may explain the
+  difference, or may not.
 
-- Do not assume a failed-looking call did nothing — check
-  `list-deployments` before retrying, or you stack duplicate builds.
-- Do not conclude anything about deploy triggers from timing alone.
-  `list-deployments` names the commit and the reason for each one.
+This file previously asserted "Railway auto-deploys on push", then
+asserted the exact opposite, and both were written confidently off two
+data points. The honest rule is the one at the top: trigger the deploy,
+then verify against `list-deployments` before telling anyone it shipped.
 
 Pushing to GitHub does **not** reliably trigger a deploy, and Railway's
 plain "redeploy" rebuilds the *previous* commit. Always deploy by SHA
