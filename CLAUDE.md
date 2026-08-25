@@ -83,6 +83,16 @@ static snapshots with scripts disabled.
 
 ### Deploying
 
+**Railway auto-deploys on push to `main`.** Observed taking about 3–4
+minutes from `git push` to the new code serving. This matters when the
+Railway MCP is unavailable — losing it does not block shipping, it only
+blocks *choosing* which commit deploys. Push and wait.
+
+What still needs the MCP (or the dashboard) is deploying a commit that
+is **not** the tip of `main` — a rollback, say. The dashboard's plain
+"Redeploy" button rebuilds the commit that deployment already had, which
+is not the same thing.
+
 Pushing to GitHub does **not** reliably trigger a deploy, and Railway's
 plain "redeploy" rebuilds the *previous* commit. Always deploy by SHA
 using the Railway MCP agent:
