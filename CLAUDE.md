@@ -83,15 +83,25 @@ static snapshots with scripts disabled.
 
 ### Deploying
 
-**Railway auto-deploys on push to `main`.** Observed taking about 3–4
-minutes from `git push` to the new code serving. This matters when the
-Railway MCP is unavailable — losing it does not block shipping, it only
-blocks *choosing* which commit deploys. Push and wait.
+**Railway does NOT auto-deploy on push.** Pushing to `main` publishes
+nothing on its own — every deploy is triggered explicitly.
 
-What still needs the MCP (or the dashboard) is deploying a commit that
-is **not** the tip of `main` — a rollback, say. The dashboard's plain
-"Redeploy" button rebuilds the commit that deployment already had, which
-is not the same thing.
+An earlier version of this file claimed the opposite. The evidence
+looked convincing and was not: a push was followed a few minutes later
+by the new code serving, so it looked like an auto-deploy. It was
+actually an earlier MCP deploy call landing late. `list-deployments`
+settled it — three deployments of one commit, matching three MCP
+attempts, and the two commits pushed afterwards never deployed at all.
+
+**The trap that caused it:** `railway-agent` sometimes returns
+`Anthropic proxy: MCP server connection lost` *after having already
+triggered the deploy*. The error is about the response, not the request.
+So:
+
+- Do not assume a failed-looking call did nothing — check
+  `list-deployments` before retrying, or you stack duplicate builds.
+- Do not conclude anything about deploy triggers from timing alone.
+  `list-deployments` names the commit and the reason for each one.
 
 Pushing to GitHub does **not** reliably trigger a deploy, and Railway's
 plain "redeploy" rebuilds the *previous* commit. Always deploy by SHA
