@@ -26,7 +26,7 @@ const diagrams = require('./lib/diagrams');
 const blocklist = require('./lib/blocklist');
 const templates = require('./lib/templates');
 const addressbook = require('./lib/addressbook');
-const onedrive = require('./lib/onedrive');
+const dropbox = require('./lib/dropbox');
 const packages = require('./lib/packages');
 const search = require('./lib/search');
 const exporter = require('./lib/export');
@@ -1587,11 +1587,11 @@ app.get('/api/files/status', async (req, res) => {
   const bucket = await files.check();
   let drive = { configured: false, connected: false };
   try {
-    drive = await onedrive.status();
+    drive = await dropbox.status();
   } catch (err) {
-    drive = { configured: onedrive.isConfigured(), connected: false, error: err.message };
+    drive = { configured: dropbox.isConfigured(), connected: false, error: err.message };
   }
-  res.json({ ...bucket, bucket, onedrive: drive, activeProvider: await files.activeProvider() });
+  res.json({ ...bucket, bucket, dropbox: drive, activeProvider: await files.activeProvider() });
 });
 
 // --- Diagrams (draw.io) ---
@@ -2143,66 +2143,66 @@ function googleRedirectUri(req) {
   return `${req.protocol}://${req.get('host')}/auth/google/callback`;
 }
 
-// --- OneDrive ---
+// --- Dropbox ---
 //
 // The callback sits under /api rather than /auth like Google's, because
 // the path was handed over before this was written and a redirect URI
 // has to match the app registration character for character. Not worth
 // making someone re-edit Azure for tidiness.
-function onedriveRedirectUri(req) {
-  return `${req.protocol}://${req.get('host')}/api/onedrive/callback`;
+function dropboxRedirectUri(req) {
+  return `${req.protocol}://${req.get('host')}/api/dropbox/callback`;
 }
 
-app.get('/api/onedrive/start', (req, res) => {
-  if (!onedrive.isConfigured()) {
-    return res.status(400).send('ONEDRIVE_CLIENT_ID / ONEDRIVE_CLIENT_SECRET are not set.');
+app.get('/api/dropbox/start', (req, res) => {
+  if (!dropbox.isConfigured()) {
+    return res.status(400).send('DROPBOX_APP_KEY / DROPBOX_APP_SECRET are not set.');
   }
   const state = crypto.randomBytes(16).toString('hex');
-  req.session.onedriveOAuthState = state;
-  res.redirect(onedrive.buildAuthUrl({ redirectUri: onedriveRedirectUri(req), state }));
+  req.session.dropboxOAuthState = state;
+  res.redirect(dropbox.buildAuthUrl({ redirectUri: dropboxRedirectUri(req), state }));
 });
 
-app.get('/api/onedrive/callback', async (req, res) => {
-  const expected = req.session.onedriveOAuthState;
-  delete req.session.onedriveOAuthState;
+app.get('/api/dropbox/callback', async (req, res) => {
+  const expected = req.session.dropboxOAuthState;
+  delete req.session.dropboxOAuthState;
 
   if (req.query.error) {
-    return res.redirect(`/?onedriveError=${encodeURIComponent(req.query.error_description || req.query.error)}`);
+    return res.redirect(`/?dropboxError=${encodeURIComponent(req.query.error_description || req.query.error)}`);
   }
   // The state check is what stops someone else's authorisation code
   // being planted here.
   if (!expected || req.query.state !== expected) {
-    return res.redirect('/?onedriveError=invalid_state');
+    return res.redirect('/?dropboxError=invalid_state');
   }
 
   try {
-    const tokens = await onedrive.exchangeCodeForToken({
+    const tokens = await dropbox.exchangeCodeForToken({
       code: req.query.code,
-      redirectUri: onedriveRedirectUri(req),
+      redirectUri: dropboxRedirectUri(req),
     });
     if (!tokens.refresh_token) {
       // Without one this works for an hour and then quietly stops, with
       // files becoming unreachable rather than obviously broken. Fail now.
-      return res.redirect('/?onedriveError=no_refresh_token');
+      return res.redirect('/?dropboxError=no_refresh_token');
     }
-    await onedrive.saveTokens(tokens);
-    res.redirect('/?onedrive=connected#integrations');
+    await dropbox.saveTokens(tokens);
+    res.redirect('/?dropbox=connected#integrations');
   } catch (err) {
-    console.error('OneDrive OAuth failed:', err);
-    res.redirect(`/?onedriveError=${encodeURIComponent(err.message)}`);
+    console.error('Dropbox OAuth failed:', err);
+    res.redirect(`/?dropboxError=${encodeURIComponent(err.message)}`);
   }
 });
 
-app.get('/api/onedrive/status', async (req, res) => {
+app.get('/api/dropbox/status', async (req, res) => {
   try {
-    res.json(await onedrive.status());
+    res.json(await dropbox.status());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/onedrive/disconnect', async (req, res) => {
-  await onedrive.disconnect();
+app.post('/api/dropbox/disconnect', async (req, res) => {
+  await dropbox.disconnect();
   res.status(204).end();
 });
 
