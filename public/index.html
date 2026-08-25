@@ -1156,6 +1156,12 @@
         <div id="intCalendly"><div class="int-row"><span class="msg-snippet">Loading…</span></div></div>
       </div>
 
+      <div class="card" style="margin-bottom:14px;">
+        <h3 style="margin-bottom:2px;">Dropbox</h3>
+        <p class="msg-snippet" style="margin-bottom:12px;">File storage for <a href="#" data-goto="files">Files &amp; Folders</a>. Once connected, new uploads go here instead of the Railway bucket; anything already in the bucket keeps working from there. App-folder access, so this app can only ever see its own folder in your Dropbox.</p>
+        <div id="intDropbox"><div class="int-row"><span class="msg-snippet">Loading…</span></div></div>
+      </div>
+
       <div class="card">
         <h3 style="margin-bottom:2px;">Wave</h3>
         <p class="msg-snippet" style="margin-bottom:12px;">Accounting · reads invoices into <a href="#" data-goto="finance">Finance</a> and the dashboard's cash panel. Read-only — nothing is written back to Wave.</p>
@@ -6473,6 +6479,62 @@
     }
   });
 
+  // --- Dropbox file storage ---
+  async function loadDropbox(){
+    const wrap = document.getElementById('intDropbox');
+    if (!wrap) return;
+
+    try {
+      const s = await (await fetch('/api/dropbox/status')).json();
+
+      if (!s.configured) {
+        wrap.innerHTML = '<div class="int-row"><span class="msg-snippet">'
+          + 'Not set up — add DROPBOX_APP_KEY and DROPBOX_APP_SECRET in Railway, then reload.'
+          + '</span></div>';
+        return;
+      }
+      if (!s.connected) {
+        // A link, not a button: this leaves the app for Dropbox's consent
+        // screen, so a normal navigation is the honest thing.
+        wrap.innerHTML = `
+          <div class="int-row">
+            <span>Not connected</span>
+            <a class="int-btn disconnected" style="text-decoration:none;" href="/api/dropbox/start">Connect</a>
+          </div>`;
+        return;
+      }
+
+      // Space is worth showing: the free tier is 2GB, and an upload
+      // failing because the account is full should be foreseeable rather
+      // than a surprise.
+      const space = (s.usedBytes != null && s.totalBytes)
+        ? `${fileSize(s.usedBytes)} of ${fileSize(s.totalBytes)} used`
+        : null;
+
+      wrap.innerHTML = `
+        <div class="int-row">
+          <span>${escapeHtml(s.account || 'Connected')}</span>
+          <button type="button" class="int-btn connected" id="dbDisconnect">Connected</button>
+        </div>
+        ${s.error ? `<div class="int-row"><span class="msg-snippet" style="color:var(--red);">${escapeHtml(s.error)}</span></div>` : ''}
+        ${space ? `<div class="int-row"><span class="msg-snippet">${escapeHtml(space)}</span></div>` : ''}
+        <div class="int-row"><span class="msg-snippet" id="dbStatus"></span></div>`;
+
+      document.getElementById('dbDisconnect').addEventListener('click', async () => {
+        // Files already in Dropbox stay in Dropbox and stay listed, but
+        // they become unreachable until it is reconnected — worth saying
+        // before rather than after.
+        if (!confirm('Disconnect Dropbox?\n\nFiles already stored there stay in your Dropbox, '
+          + 'but this app will not be able to open them until you reconnect. '
+          + 'New uploads will go to the Railway bucket instead.')) return;
+        await fetch('/api/dropbox/disconnect', { method: 'POST' });
+        loadDropbox();
+      });
+    } catch (err) {
+      wrap.innerHTML = '<div class="int-row"><span class="msg-snippet">Could not read Dropbox status.</span></div>';
+    }
+  }
+
   // --- Google Calendar bridge ---
   async function loadGoogle(){
     const wrap = document.getElementById('intGoogle');
@@ -6901,6 +6963,7 @@
     loadFeedUrl();
     loadCalendly();
     loadGoogle();
+    loadDropbox();
     loadWave();
     loadFinance();
     loadScheduling();
@@ -6917,8 +6980,19 @@
     } else if (gErr) {
       showBanner(`Google Calendar connection failed: ${gErr}`, 'error');
     }
-    if (params.get('googleConnected') || gErr) {
-      history.replaceState({}, '', location.pathname);
+    if (params.get('dropbox') === 'connected') {
+      showBanner('Dropbox connected — new uploads will go there from now on.', 'ok');
+    }
+    const dbErr = params.get('dropboxError');
+    if (dbErr === 'no_refresh_token') {
+      showBanner("Dropbox didn't return a refresh token, so the connection would die within hours. "
+        + 'Remove this app at dropbox.com → Settings → Connected apps, then connect again.', 'error');
+    } else if (dbErr) {
+      showBanner(`Dropbox connection failed: ${dbErr}`, 'error');
+    }
+
+    if (params.get('googleConnected') || gErr || params.get('dropbox') || dbErr) {
+      history.replaceState({}, '', location.pathname + location.hash);
     }
   })();
 </script>
