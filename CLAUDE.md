@@ -105,8 +105,8 @@ asserted the exact opposite, and both were written confidently off two
 data points. The honest rule is the one at the top: trigger the deploy,
 then verify against `list-deployments` before telling anyone it shipped.
 
-Pushing to GitHub does **not** reliably trigger a deploy, and Railway's
-plain "redeploy" rebuilds the *previous* commit. Always deploy by SHA
+Railway's plain "redeploy" rebuilds the commit that deployment already
+had, so it is never the way to ship something new. Always deploy by SHA
 using the Railway MCP agent:
 
 > Deploy commit `<sha>` for service `24ed1c72-0af5-4dc6-bee4-ea4abdaee4ad`.
@@ -121,7 +121,8 @@ It returned 23 names for this service and silently omitted all five
 exactly like a broken integration and nearly caused a pointless re-wiring.
 To check whether a variable is really set, ask the Railway agent for the
 service config, or better, hit the app endpoint that actually uses it
-(`/api/files/status` does a `HeadBucket` with the live credentials).
+(`/api/dropbox/status` reports `configured` straight from the env, and
+`connected` only if a stored token actually works).
 Separately, variable changes are staged and only reach the running app on
 the next deploy — so a genuinely new variable still needs one.
 
@@ -136,8 +137,8 @@ AUTH_USER=... AUTH_PASS=... bash scripts/smoke-test.sh
 ```
 
 It creates and deletes records against the live app — including a real
-upload to the live bucket — and cleans up after itself, so don't run it
-while someone is using the app.
+upload to the live Dropbox folder — and cleans up after itself, so do
+not run it while someone is using the app.
 
 ### Shell gotcha
 
@@ -206,11 +207,16 @@ is documented in `HANDOFF.md`:
   server-side render of `.drawio` without draw.io's separate export
   server — do not go hunting for a Node library. See the Diagrams
   section of the README.
-- **File storage is Railway Buckets, and the alternatives were checked.**
-  There is no `pocketdataoffice.com` OneDrive (no Microsoft tenant on the
-  domain), Proton Drive has no public API, and self-hosting means a
-  second server to patch and back up. The accepted cost is no backup and
-  no version history — see the Outstanding work section of `HANDOFF.md`.
+- **File storage is Dropbox.** It replaced a Railway Bucket, and every
+  file was migrated. OneDrive was attempted first and abandoned: a
+  personal Microsoft account has no Entra directory, so the app cannot
+  even be registered. Do not retry that.
+
+  Dropbox needed no directory, its refresh tokens do not expire, and
+  app-folder access means the code cannot see anything outside its own
+  folder. It also brought file version history, which the bucket never
+  had. Proton Drive has no public API; self-hosting means a second
+  server to patch.
 
 ## Design
 

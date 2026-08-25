@@ -1006,8 +1006,13 @@ if echo "$FS" | grep -q "\"configured\":true"; then
   ok "file storage configured"
 
   ST=$(api "$BASE_URL/api/files/status")
-  echo "$ST" | grep -q "\"ok\":true" && ok "bucket reachable with the configured credentials" \
-    || bad "bucket unreachable" "$(echo "$ST" | head -c 150)"
+  echo "$ST" | grep -q "\"ok\":true" && ok "Dropbox reachable with the stored token" \
+    || bad "Dropbox unreachable" "$(echo "$ST" | head -c 150)"
+  # The store moved from an S3 bucket to Dropbox; nothing should still
+  # be pointing at the bucket, and a row that does is now unreadable.
+  api "$BASE_URL/api/files" | grep -q '"storageProvider":"bucket"' \
+    && bad "a file still points at the removed bucket" "it cannot be downloaded" \
+    || ok "no files left pointing at the removed bucket"
 
   # Round-trip an upload, then confirm the bytes come back intact.
   TMPF=$(mktemp); echo "smoke-test-file-contents" > "$TMPF"

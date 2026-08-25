@@ -1578,32 +1578,15 @@ app.delete('/api/files/:id', async (req, res) => {
   }
 });
 
-// Surfaced in Integrations so a misconfigured bucket is visible before
+// Surfaced in Integrations so a broken connection is visible before
 // someone tries to upload.
-// One-off: move everything still in the bucket into Dropbox, keeping
-// file ids so nothing pointing at them breaks. Goes away with the bucket
-// code it exists to make deletable.
-app.post('/api/files/migrate', async (req, res) => {
-  try {
-    res.json(await files.migrateBucketToDropbox());
-  } catch (err) {
-    console.error('Migration failed:', err);
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// Reports both stores, and which one a new upload would land in. With
-// two possible destinations, "file storage is fine" is no longer a
-// single yes or no.
 app.get('/api/files/status', async (req, res) => {
-  const bucket = await files.check();
-  let drive = { configured: false, connected: false };
   try {
-    drive = await dropbox.status();
+    const ok = await files.check();
+    res.json({ ...ok, dropbox: await dropbox.status() });
   } catch (err) {
-    drive = { configured: dropbox.isConfigured(), connected: false, error: err.message };
+    res.json({ ok: false, reason: err.message, dropbox: { configured: dropbox.isConfigured(), connected: false } });
   }
-  res.json({ ...bucket, bucket, dropbox: drive, activeProvider: await files.activeProvider() });
 });
 
 // --- Diagrams (draw.io) ---

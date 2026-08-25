@@ -1190,3 +1190,47 @@ input's own rectangle rather than absolutely inside its wrapper: the task
 dialog scrolls, and an absolutely-positioned list is clipped the moment
 it reaches the bottom edge — which is exactly where a dropdown appears.
 It flips above the field when there is more room there.
+
+### File storage: Dropbox
+
+Files live in Dropbox, reached over its API. Uploads and downloads both
+go through the app rather than handing out share links — a share link is
+a bearer token that works for anyone holding it, which is the wrong
+default for client files.
+
+**How it got here.** Storage was originally a Railway Bucket
+(S3-compatible, on Tigris). OneDrive was attempted as a replacement and
+abandoned: registering an app against Microsoft Graph requires an Entra
+directory, and a personal Microsoft account does not have one — signing
+in lands in the "Microsoft Services" consumer tenant and is refused by
+the portal's own UI. That is how personal accounts work, not a
+misconfiguration, so it is not worth retrying.
+
+Dropbox needs no directory. It also turned out to be the better fit:
+
+- **Refresh tokens do not expire.** Microsoft's lapse after inactivity,
+  which would have meant files silently becoming unreachable.
+- **App folder access.** The app is registered against a folder rather
+  than the account, so this code physically cannot see anything else in
+  the Dropbox — enforced by Dropbox, not by us remembering to scope a
+  path.
+- **Version history**, which the bucket had no equivalent of.
+- Simple upload covers 150MB against a 25MB limit here, so there is no
+  chunked-session path to get wrong.
+
+**The bucket is gone**, along with `@aws-sdk/client-s3` and the five
+`FILES_*` variables. Every file was migrated first, keeping row ids
+rather than re-uploading: a new id would have silently broken anything
+pointing at the old one — `clients.diagram_file_id` among them, which
+would have unpinned an architecture diagram with no error anywhere.
+
+`files.storage_provider` survives the removal on purpose. It records
+where a row's bytes are, and `assertReachable()` turns "this file
+predates Dropbox" into a sentence rather than a confusing 500. It is
+also what a second store would need, which has now been added twice.
+
+**One filename gotcha, handled:** Dropbox passes call arguments in a
+`Dropbox-API-Arg` header, which must be pure ASCII. A filename with an
+accent, a curly apostrophe, or CJK characters would otherwise produce an
+invalid header and an incomprehensible 400. `apiArg()` escapes
+non-ASCII to `\uXXXX`, which Dropbox unescapes.
